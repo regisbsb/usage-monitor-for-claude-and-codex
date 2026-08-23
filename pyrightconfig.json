@@ -1,0 +1,16 @@
+{
+    "venvPath": ".",
+    "venv": ".venv",
+    "include": ["usage_monitor"],
+    "exclude": [
+        "usage_monitor/app.py",
+        "usage_monitor/api.py",
+        "usage_monitor/cache.py",
+        "usage_monitor/claude_cli.py"
+    ],
+    "reportUnknownMemberType": false,
+    "reportUnknownParameterType": false,
+    "reportUnknownArgumentType": false,
+    "reportUnknownVariableType": false,
+    "reportAttributeAccessIssue": "none"
+}

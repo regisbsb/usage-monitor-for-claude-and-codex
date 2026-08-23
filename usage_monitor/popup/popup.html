@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<link rel="stylesheet" href="popup.css">
+</head>
+<body>
+<header>
+    <span id="title"></span>
+    <div class="window-controls">
+        <button type="button" id="pinBtn" aria-pressed="false"><svg viewBox="0 0 16 16"><path fill="currentColor" d="M5 2h6v2l-1 1v3l3 3v1H9v3H7v-3H3v-1l3-3V5L5 4z"/></svg></button>
+        <button type="button" id="closeBtn" aria-label="Close">&times;</button>
+    </div>
+</header>
+
+<section id="accountSection">
+    <h2 id="headingAccount"></h2>
+    <dl>
+        <div id="emailRow">
+            <dt id="labelEmail"></dt>
+            <dd id="emailValue"></dd>
+        </div>
+        <div id="planRow">
+            <dt id="labelPlan"></dt>
+            <dd id="planValue"></dd>
+        </div>
+    </dl>
+</section>
+
+<section id="usageSection">
+    <h2 id="headingUsage"></h2>
+    <div id="usageBars"></div>
+</section>
+
+<section id="extraSection">
+    <h2 id="headingExtraUsage"></h2>
+    <div class="bar-header">
+        <span id="extraSpent"></span>
+        <span id="extraPct"></span>
+    </div>
+    <div class="bar-container" id="extraBarContainer">
+        <div class="bar-fill" id="extraFill"></div>
+    </div>
+</section>
+
+<section id="installSection">
+    <div class="heading-row">
+        <h2 id="headingClaudeCode"></h2>
+        <span id="changelogLink"></span>
+    </div>
+    <dl id="installRows"></dl>
+</section>
+
+<footer id="statusSection">
+    <span id="statusText"></span>
+    <span id="appVersion"></span>
+</footer>
+
+<script src="popup.js"></script>
+</body>
+</html>

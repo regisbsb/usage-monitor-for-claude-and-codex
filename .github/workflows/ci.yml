@@ -1,0 +1,21 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: pip
+      - run: python -m pip install --upgrade pip
+      - run: python -m pip install -r requirements.txt
+      - run: python -m unittest discover -s tests
+      - run: python -m compileall -q usage_monitor tests
+      - run: npx --yes pyright
+      - run: python build.py

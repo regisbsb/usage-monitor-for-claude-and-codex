@@ -1,0 +1,487 @@
+"""
+Formatting
+===========
+
+Pure functions for formatting usage data: time-until-reset strings,
+elapsed period percentages, credit amounts, status lines, and tooltip text.
+"""
+from __future__ import annotations
+
+import locale as _locale
+import re
+from datetime import datetime, timedelta, timezone
+from typing import Any
+
+from .i18n import T
+from .settings import CURRENCY_SYMBOL, TIME_FORMAT, TOOLTIP_FIELDS, _SYSTEM_CURRENCY_SYMBOL
+
+__all__ = [
+    'divider_positions', 'elapsed_pct', 'expand_popup_fields', 'field_period', 'format_credits',
+    'format_tooltip', 'parse_field_name', 'popup_label', 'resolve_display_fields', 'time_until', 'tooltip_label',
+]
+
+PERIOD_5H = 5 * 3600
+PERIOD_7D = 7 * 24 * 3600
+
+_NUMBER_WORDS = {
+    'one': 1, 'two': 2, 'three': 3, 'four': 4, 'five': 5, 'six': 6,
+    'seven': 7, 'eight': 8, 'nine': 9, 'ten': 10, 'eleven': 11, 'twelve': 12,
+}
+_UNIT_SUFFIXES = {'minute': 'm', 'hour': 'h', 'day': 'd'}
+_TITLE_CASE_EXCEPTIONS = {'oauth': 'OAuth', 'api': 'API', 'ai': 'AI', 'gpt': 'GPT'}
+_CURRENCY_SYMBOLS = {
+    'USD': '$', 'EUR': '€', 'GBP': '£', 'JPY': '¥', 'CNY': '¥',
+    'INR': '₹', 'KRW': '₩', 'BRL': 'R$', 'CAD': 'CA$', 'AUD': 'A$', 'CHF': 'CHF',
+}
+
+
+def parse_field_name(field: str) -> tuple[int, str, str | None] | None:
+    """Parse an API field name into its numeric, unit, and variant components.
+
+    Parameters
+    ----------
+    field : str
+        API field name, e.g. ``'five_hour'``, ``'seven_day_sonnet'``.
+
+    Returns
+    -------
+    tuple or None
+        ``(number, unit, variant)`` where *number* is the parsed digit,
+        *unit* is the raw unit word (e.g. ``'hour'``, ``'day'``), and
+        *variant* is the remaining suffix or ``None``.
+        Returns ``None`` if the number word or unit is not recognized.
+    """
+    parts = field.split('_', 2)
+    if len(parts) < 2:
+        return None
+
+    number = int(parts[0]) if parts[0].isdigit() else _NUMBER_WORDS.get(parts[0])
+    unit = parts[1]
+    if number is None or unit not in _UNIT_SUFFIXES:
+        return None
+
+    variant = parts[2] if len(parts) > 2 else None
+    return (number, unit, variant)
+
+
+def _title_case_variant(text: str) -> str:
+    """Title-case a variant string, respecting abbreviation exceptions."""
+    return ' '.join(_TITLE_CASE_EXCEPTIONS.get(w.lower(), w.title()) for w in text.split('_'))
+
+
+def _friendly_limit_name(limit_name: str) -> str:
+    """Format a provider model slug while preserving its punctuation."""
+    normalized = limit_name.strip().replace('_', '-')
+    return re.sub(
+        r'[A-Za-z]+',
+        lambda match: _TITLE_CASE_EXCEPTIONS.get(match.group(0).lower(), match.group(0).title()),
+        normalized,
+    )
+
+
+def tooltip_label(field: str, limit_name: str | None = None) -> str:
+    """Generate a short tooltip label from an API field name.
+
+    Parameters
+    ----------
+    field : str
+        API field name, e.g. ``'five_hour'``, ``'seven_day_sonnet'``.
+
+    Returns
+    -------
+    str
+        Short label like ``'5h'``, ``'7d'``, or ``'7d Sonnet'``.
+        Falls back to title case of the full field name if unparseable.
+    """
+    friendly_name = _friendly_limit_name(limit_name) if limit_name else None
+    parsed = parse_field_name(field)
+    if parsed is None:
+        return friendly_name or _title_case_variant(field)
+
+    number, unit, variant = parsed
+    label = f'{number}{_UNIT_SUFFIXES[unit]}'
+    if variant:
+        label += f' {friendly_name or _title_case_variant(variant)}'
+    return label
+
+
+def popup_label(field: str, limit_name: str | None = None) -> str:
+    """Generate a popup bar label from an API field name using i18n templates.
+
+    Parameters
+    ----------
+    field : str
+        API field name, e.g. ``'five_hour'``, ``'seven_day_sonnet'``.
+
+    Returns
+    -------
+    str
+        Localized label like ``'Session (5hr)'`` or ``'Weekly (Sonnet)'``.
+        Falls back to title case with abbreviation exceptions if unparseable.
+    """
+    friendly_name = _friendly_limit_name(limit_name) if limit_name else None
+    parsed = parse_field_name(field)
+    if parsed is None:
+        return friendly_name or _title_case_variant(field)
+
+    number, unit, variant = parsed
+    if variant:
+        suffix = friendly_name or _title_case_variant(variant)
+    elif unit == 'hour':
+        suffix = f'{number}hr'
+    elif unit == 'minute':
+        suffix = f'{number}min'
+    else:
+        suffix = f'{number} {unit}'
+
+    template_key = 'weekly_label' if unit == 'day' else 'session_label'
+    return T[template_key].format(suffix=suffix)
+
+
+def field_period(field: str) -> int | None:
+    """Return the period duration in seconds for a field, or None if unknown.
+
+    Parameters
+    ----------
+    field : str
+        API field name, e.g. ``'five_hour'``, ``'seven_day_sonnet'``.
+    """
+    parsed = parse_field_name(field)
+    if parsed is None:
+        return None
+
+    number, unit, _ = parsed
+    if unit == 'minute':
+        return number * 60
+    if unit == 'hour':
+        return number * 3600
+    if unit == 'day':
+        return number * 24 * 3600
+    return None
+
+
+def _field_sort_key(field: str) -> tuple[int, int, int, str]:
+    """Sort shorter periods first, base before variants, and unparseable fields last."""
+    period = field_period(field)
+    if period is None:
+        return (1, 0, 0, field)
+
+    parsed = parse_field_name(field)
+    variant = parsed[2] if parsed else None
+    variant_order = 0 if variant is None else 1
+    return (0, period, variant_order, variant or '')
+
+
+def expand_popup_fields(popup_fields: list[str], usage_data: dict[str, Any]) -> list[str]:
+    """Expand a popup_fields setting into concrete field names based on API data.
+
+    Parameters
+    ----------
+    popup_fields : list[str]
+        User-configured field list, possibly containing ``'*'`` wildcard.
+    usage_data : dict
+        Raw API response dict.
+
+    Returns
+    -------
+    list[str]
+        Ordered list of field names to display, with null/missing fields removed.
+    """
+    available = {
+        key for key, value in usage_data.items()
+        if isinstance(value, dict) and 'utilization' in value and 'resets_at' in value
+        and value.get('utilization') is not None
+    }
+
+    result: list[str] = []
+    seen: set[str] = set()
+
+    for field in popup_fields:
+        if field == '*':
+            remaining = sorted((f for f in available if f not in seen), key=_field_sort_key)
+            for f in remaining:
+                seen.add(f)
+                result.append(f)
+        elif field in available and field not in seen:
+            seen.add(field)
+            result.append(field)
+
+    return result
+
+
+def resolve_display_fields(configured: list[str], data: dict[str, Any], count: int) -> list[str | None]:
+    """Resolve configured entries and fill missing slots from detected quota fields."""
+    if count < 0:
+        raise ValueError('count must be nonnegative')
+
+    detected = []
+    for key, value in data.items():
+        if key == 'extra_usage' or not isinstance(value, dict):
+            continue
+        if 'utilization' in value and 'resets_at' in value and value.get('utilization') is not None:
+            detected.append(key)
+    detected.sort(key=_field_sort_key)
+
+    remaining = detected.copy()
+    slots: list[str | None] = []
+    for entry in configured[:count]:
+        base = entry.split(':', 1)[0]
+        if base in remaining:
+            remaining.remove(base)
+            slots.append(entry)
+
+    slots.extend(remaining[:count - len(slots)])
+    slots.extend([None] * (count - len(slots)))
+    return slots
+
+
+def elapsed_pct(resets_at: str, period_seconds: int) -> float | None:
+    """Return elapsed percentage of a usage period, or None if not calculable.
+
+    Parameters
+    ----------
+    resets_at : str
+        ISO 8601 timestamp when the limit resets.
+    period_seconds : int
+        Total duration of the period in seconds (e.g. 18000 for 5h).
+
+    Returns
+    -------
+    float or None
+        Percentage of the period that has already elapsed (0-100),
+        or None if the value cannot be determined.
+    """
+    if not resets_at or period_seconds <= 0:
+        return None
+
+    try:
+        reset = datetime.fromisoformat(resets_at)
+        now = datetime.now(timezone.utc)
+        remaining = (reset - now).total_seconds()
+        elapsed = period_seconds - remaining
+
+        return max(0.0, min(100.0, elapsed / period_seconds * 100))
+    except Exception:
+        return None
+
+
+def divider_positions(resets_at: str, period_seconds: int) -> list[float]:
+    """Return relative positions (0.0-1.0) of divider marks within a usage period.
+
+    Five-hour periods are split into five equal hour sections, independent
+    of clock alignment.  Periods of a day or longer are subdivided at local
+    midnight boundaries (e.g. seven day marks on a weekly bar).  Other
+    sub-day periods have no dividers - their subdivision is a deliberate
+    design decision for if and when such quota types exist.
+
+    Parameters
+    ----------
+    resets_at : str
+        ISO 8601 timestamp when the limit resets.
+    period_seconds : int
+        Total duration of the period in seconds.
+
+    Returns
+    -------
+    list[float]
+        Divider positions within the period, each in the range (0.0, 1.0)
+        exclusive.  Positions that would round to 0px at typical bar
+        widths are omitted.
+    """
+    if not resets_at or period_seconds <= 0:
+        return []
+
+    try:
+        reset_utc = datetime.fromisoformat(resets_at)
+
+        if period_seconds < 24 * 3600:
+            if period_seconds != PERIOD_5H:
+                return []
+            return [i / 5 for i in range(1, 5)]
+
+        start_utc = reset_utc - timedelta(seconds=period_seconds)
+
+        start_local = start_utc.astimezone()
+        end_local = reset_utc.astimezone()
+
+        # Walk local calendar days and convert each naive midnight separately:
+        # astimezone() re-evaluates the UTC offset per date, so a DST
+        # changeover inside the period keeps every divider on a true local
+        # midnight (adding timedeltas would carry the period-start offset).
+        day = start_local.date() + timedelta(days=1)
+
+        positions = []
+        while True:
+            midnight = datetime(day.year, day.month, day.day).astimezone()
+            if midnight >= end_local:
+                break
+            elapsed = (midnight - start_local).total_seconds()
+            rel = elapsed / period_seconds
+            if rel > 0.003:
+                positions.append(rel)
+            day += timedelta(days=1)
+
+        return positions
+    except Exception:
+        return []
+
+
+def _format_clock(when: datetime, clock_24h: bool) -> str:
+    """Format a local time as a 24-hour ('14:30') or 12-hour ('2:30 PM') clock string."""
+    if clock_24h:
+        return when.strftime('%H:%M')
+
+    # %I is zero-padded (e.g. '02:30 PM'); strip the single leading zero for '2:30 PM'.
+    return when.strftime('%I:%M %p').lstrip('0')
+
+
+def time_until(iso_str: str, clock_24h: bool | None = None) -> str:
+    """Return human-readable reset time.
+
+    Same day:  "Resets in 2h 20m (14:30)"
+    Tomorrow:  "Resets tomorrow, 12:00"
+    Later:     "Resets Sat., 12:00"
+
+    Parameters
+    ----------
+    iso_str : str
+        ISO 8601 timestamp when the limit resets.
+    clock_24h : bool or None
+        Format the clock time in 24-hour (True) or 12-hour (False) style.
+        ``None`` falls back to the ``time_format`` setting.
+    """
+    if clock_24h is None:
+        clock_24h = TIME_FORMAT == '24h'
+
+    try:
+        reset = datetime.fromisoformat(iso_str)
+        now = datetime.now(timezone.utc)
+        diff = reset - now
+        total_seconds = diff.total_seconds()
+
+        # Within the last minute before the reset (or the first moments after,
+        # while the server-side reset propagates), show an imminent marker
+        # instead of hiding the line - mirrors the native UI. Clearly-stale
+        # timestamps (far in the past) still collapse to empty so we do not lie.
+        if total_seconds < 60:
+            return T['resets_imminent'] if total_seconds > -60 else ''
+
+        total_min = int(total_seconds / 60)
+        reset_local = reset.astimezone()
+        today = datetime.now().date()
+        if reset_local.second >= 30:
+            reset_local = reset_local.replace(second=0) + timedelta(minutes=1)
+        else:
+            reset_local = reset_local.replace(second=0)
+        reset_date = reset_local.date()
+        time_str = _format_clock(reset_local, clock_24h)
+
+        if reset_date == today:
+            if total_min >= 60:
+                duration = T['duration_hm'].format(h=total_min // 60, m=total_min % 60)
+            else:
+                duration = T['duration_m'].format(m=total_min)
+            return T['resets_in'].format(duration=duration, clock=time_str)
+
+        if reset_date == today + timedelta(days=1):
+            return T['resets_tomorrow'].format(clock=time_str)
+
+        wd = T['weekdays'][reset_local.weekday()]
+        return T['resets_weekday'].format(day=wd, clock=time_str)
+    except Exception:
+        return ''
+
+
+def _target_currency_symbol(currency: str | None) -> str:
+    """Return the symbol to display for a currency amount.
+
+    Precedence: an explicit ``currency_symbol`` user override (``None``
+    means unset; an empty override means "no symbol"), then the billing
+    currency reported by the API (its known symbol, or the ISO code itself
+    as a fallback), then the system locale symbol.
+
+    Parameters
+    ----------
+    currency : str or None
+        ISO 4217 currency code from the API (e.g. ``'EUR'``), or None.
+    """
+    if CURRENCY_SYMBOL is not None:
+        return CURRENCY_SYMBOL
+
+    if currency:
+        return _CURRENCY_SYMBOLS.get(currency.upper(), currency.upper())
+
+    return _SYSTEM_CURRENCY_SYMBOL
+
+
+def format_credits(minor_units: float, currency: str | None = None, decimal_places: int | None = None) -> str:
+    """Format a minor-unit amount as a localized currency string.
+
+    Uses the system locale for number formatting (decimal separator, symbol
+    placement, grouping).  The displayed symbol follows the billing currency
+    reported by the API when it differs from the system locale, so an account
+    billed in a currency other than the system's still shows correctly.
+
+    Parameters
+    ----------
+    minor_units : float
+        Amount in the currency's minor units (e.g. 420.0 for 4.20 at two
+        decimal places).
+    currency : str or None
+        ISO 4217 currency code from the API (e.g. ``'EUR'``).
+    decimal_places : int or None
+        Number of minor-unit decimal places reported by the API; defaults to
+        two when not provided.
+    """
+    places = decimal_places if decimal_places is not None else 2
+    amount = minor_units / (10 ** places)
+    symbol = _target_currency_symbol(currency)
+
+    try:
+        formatted = _locale.currency(amount, grouping=True)
+
+        # An empty symbol (explicit "no symbol" override) removes the system
+        # symbol instead of leaving it in place.
+        if symbol != _SYSTEM_CURRENCY_SYMBOL and _SYSTEM_CURRENCY_SYMBOL:
+            formatted = formatted.replace(_SYSTEM_CURRENCY_SYMBOL, symbol).strip()
+
+        return formatted
+    except (ValueError, _locale.Error):
+        if symbol:
+            return f'{symbol}\u00a0{amount:.{places}f}'
+        return f'{amount:.{places}f}'
+
+
+def format_tooltip(data: dict[str, Any], fields: list[str] | None = None, title: str | None = None) -> str:
+    """Format usage data as short tooltip text."""
+    if 'error' in data:
+        if data.get('auth_error'):
+            return f"{T['auth_expired_label']}\n{T['auth_expired_short']}"
+        error = data['error']
+        server_msg = data.get('server_message')
+        if server_msg:
+            error += f' {server_msg}'
+        return f"{T['error_label']}\n{error[:80]}"
+
+    configured_fields = TOOLTIP_FIELDS if fields is None else fields
+    lines = [title or T['tooltip_title']]
+    resolved_fields: list[str | None]
+    if fields is None:
+        resolved_fields = list(configured_fields)
+    else:
+        resolved_fields = resolve_display_fields(configured_fields, data, len(configured_fields))
+    for resolved in resolved_fields:
+        if resolved is None:
+            continue
+        key = resolved.split(':', 1)[0]
+        entry = data.get(key)
+        if isinstance(entry, dict) and entry.get('utilization') is not None:
+            short = tooltip_label(key, entry.get('limit_name'))
+            pct = f"{entry['utilization']:.0f}%"
+            reset = time_until(entry.get('resets_at', ''))
+            line = f'{short}: {pct}'
+            if reset:
+                line += f' ({reset})'
+            lines.append(line)
+
+    return '\n'.join(lines)

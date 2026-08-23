@@ -1,0 +1,298 @@
+<!--
+    Dev preview for the popup UI.
+
+    Start server from the project root (serves the repo so the preview can fetch
+    the real locale/*.json files):
+        python -m http.server 8080
+
+    Then open: http://localhost:8080/usage_monitor/popup/dev.html
+-->
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Popup Dev Preview</title>
+<style>
+    body {
+        margin: 0;
+        min-height: 100vh;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        background: #0a0a0a;
+        font-family: system-ui, sans-serif;
+    }
+
+    .dev-controls {
+        position: fixed;
+        top: 16px;
+        left: 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+
+        & button, & select {
+            padding: 6px 14px;
+            background: #333;
+            color: #ccc;
+            border: 1px solid #555;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 13px;
+        }
+
+        & button:hover, & select:hover { background: #444; }
+
+        & select { margin-bottom: 8px; }
+    }
+
+    iframe {
+        border: none;
+        width: 340px;
+        background: #1e1e1e;
+        visibility: hidden;
+    }
+</style>
+</head>
+<body>
+<div class="dev-controls">
+    <select id="langSelect" title="Language"></select>
+    <button onclick="loadPreset('full')">Full data</button>
+    <button onclick="loadPreset('minimal')">Minimal (next update)</button>
+    <button onclick="loadPreset('error')">Error state</button>
+    <button onclick="loadPreset('refreshing')">Refreshing (hours)</button>
+    <button onclick="loadPreset('loading')">Initial load</button>
+    <button onclick="randomize()">Randomize bars</button>
+</div>
+
+<iframe id="popup"></iframe>
+
+<script>
+const COLORS = {
+    bg: '#1e1e1e', fg: '#cccccc', fg_dim: '#888888', fg_heading: '#ffffff', fg_link: '#4a9eff',
+    bar_bg: '#333333', bar_fg: '#4a9eff', bar_fg_warn: '#e05050', bar_divider: '#000c', bar_marker: '#fffc',
+};
+
+// Available locales (filename code -> display name). Keep in sync with locale/*.json.
+const LANGS = [
+    ['en', 'English'], ['de', 'Deutsch'], ['es', 'Espanol'], ['fr', 'Francais'],
+    ['hi', 'Hindi'], ['id', 'Indonesia'], ['it', 'Italiano'], ['ja', 'Japanese'],
+    ['ko', 'Korean'], ['pt-BR', 'Portugues (BR)'], ['uk', 'Ukrainian'],
+    ['zh-CN', 'Chinese (Simpl.)'], ['zh-TW', 'Chinese (Trad.)'],
+];
+
+// Presets carry *semantic* fields; display strings are built from the loaded
+// locale so every text case can be inspected in any language.
+const PRESETS = {
+    full: {
+        profile: { email: 'user@example.com', plan: 'Max (Team)' },
+        usage: [
+            { unit: 'hour', suffix: '5hr', pct: 42, warn: false,
+              reset: { kind: 'in', duration: '2h 30m', clock: '14:30' }, dividers: [0.2, 0.4, 0.6, 0.8], marker_rel: 0.35 },
+            { unit: 'week', suffix: '7 day', pct: 65, warn: true,
+              reset: { kind: 'weekday', day: 'Sat', clock: '12:00' }, dividers: [0.143, 0.286, 0.429, 0.571, 0.714, 0.857], marker_rel: 0.55 },
+            { unit: 'week', suffix: 'Sonnet', pct: 30, warn: false,
+              reset: { kind: 'weekday', day: 'Sat', clock: '12:00' }, dividers: [0.143, 0.286, 0.429, 0.571, 0.714, 0.857], marker_rel: 0.55 },
+            { unit: 'week', suffix: 'Opus', pct: 12, warn: false,
+              reset: { kind: 'weekday', day: 'Sat', clock: '12:00' }, dividers: [0.143, 0.286, 0.429, 0.571, 0.714, 0.857], marker_rel: 0.55 },
+        ],
+        extra: { pct: 23, used: '$4.60', limit: '$20.00' },
+        installations: [
+            { name: 'CLI', version: '2.1.69' },
+            { name: 'VS Code', version: '2.1.69' },
+            { name: 'Cursor', version: '2.1.65' },
+        ],
+        status: () => ({ last_success_time: now() - 3, next_poll_time: now() + 20, refreshing: false, error: null }),
+    },
+    minimal: {
+        profile: null,
+        usage: [
+            { unit: 'hour', suffix: '5hr', pct: 10, warn: false,
+              reset: { kind: 'in', duration: '4h 50m', clock: '17:00' }, dividers: [0.2, 0.4, 0.6, 0.8], marker_rel: 0.03 },
+        ],
+        extra: null,
+        installations: [],
+        // ~90s ago + next poll soon -> "Updated 1m ago . Next update in 1m" (the overflow case from issue #53).
+        status: () => ({ last_success_time: now() - 90, next_poll_time: now() + 90, refreshing: false, error: null }),
+    },
+    error: {
+        profile: { email: 'user@example.com', plan: 'Max' },
+        usage: [
+            { unit: 'hour', suffix: '5hr', pct: 95, warn: true,
+              reset: { kind: 'in', duration: '12m', clock: '12:12' }, dividers: [0.2, 0.4, 0.6, 0.8], marker_rel: 0.96 },
+            { unit: 'week', suffix: '7 day', pct: 88, warn: true,
+              reset: { kind: 'tomorrow', clock: '08:00' }, dividers: [0.143, 0.286, 0.429, 0.571, 0.714, 0.857], marker_rel: 0.80 },
+        ],
+        extra: null,
+        installations: [{ name: 'CLI', version: '2.1.69' }],
+        status: () => ({ last_success_time: now() - 300, next_poll_time: now() + 30, refreshing: false, error: 'Could not connect to Anthropic API.' }),
+    },
+    refreshing: {
+        profile: { email: 'user@example.com', plan: 'Max (Team)' },
+        usage: [
+            { unit: 'hour', suffix: '5hr', pct: 42, warn: false,
+              reset: { kind: 'in', duration: '2h 30m', clock: '14:30' }, dividers: [0.2, 0.4, 0.6, 0.8], marker_rel: 0.35 },
+        ],
+        extra: null,
+        installations: [{ name: 'CLI', version: '2.1.69' }],
+        // ~65 min ago -> exercises the "{h}h {m}m" duration variant in the footer.
+        status: () => ({ last_success_time: now() - 3900, next_poll_time: null, refreshing: true, error: null }),
+    },
+    loading: {
+        profile: null, usage: [], extra: null, installations: [],
+        status: { staticKey: 'status_refreshing', is_error: false, refreshing: true },
+    },
+};
+
+const iframe = document.getElementById('popup');
+const langSelect = document.getElementById('langSelect');
+const win = () => iframe.contentWindow;
+const now = () => Date.now() / 1000;
+
+let currentLang = 'en';
+let currentLocale = null;
+let currentPreset = 'full';
+
+// Map locale JSON keys onto the compact translation object popup.js expects.
+function buildTranslations(loc) {
+    return {
+        title: loc.popup_title, account: loc.account, email: loc.email, plan: loc.plan,
+        usage: loc.usage, extra_usage: loc.extra_usage, claude_code: loc.claude_code, changelog: loc.changelog,
+        status_updated_s: loc.status_updated_s, status_updated: loc.status_updated,
+        status_next_update: loc.status_next_update, status_refreshing: loc.status_refreshing,
+        duration_hm: loc.duration_hm, duration_m: loc.duration_m, duration_s: loc.duration_s,
+    };
+}
+
+function localizeLabel(loc, entry) {
+    const template = entry.unit === 'hour' ? loc.session_label : loc.weekly_label;
+    return template.replace('{suffix}', entry.suffix);
+}
+
+// Map a preset usage entry to its API field key (so compact_hide preview works).
+function fieldKey(entry) {
+    if (entry.unit === 'hour') return 'five_hour';
+    if (entry.suffix === '7 day') return 'seven_day';
+    return 'seven_day_' + entry.suffix.toLowerCase();
+}
+
+function localizeReset(loc, reset) {
+    if (!reset) return '';
+    if (reset.kind === 'in') return loc.resets_in.replace('{duration}', reset.duration).replace('{clock}', reset.clock);
+    if (reset.kind === 'tomorrow') return loc.resets_tomorrow.replace('{clock}', reset.clock);
+    if (reset.kind === 'weekday') return loc.resets_weekday.replace('{day}', reset.day).replace('{clock}', reset.clock);
+    return '';
+}
+
+// Build the data snapshot popup.js consumes from a preset + the active locale.
+function resolveData(name, loc) {
+    const preset = PRESETS[name];
+
+    const usage = (preset.usage || []).map((entry) => ({
+        key: fieldKey(entry),
+        label: localizeLabel(loc, entry),
+        pct_text: entry.pct + '%',
+        fill_pct: entry.pct / 100,
+        warn: entry.warn,
+        reset_text: localizeReset(loc, entry.reset),
+        dividers: entry.dividers,
+        marker_rel: entry.marker_rel,
+    }));
+
+    const extra = preset.extra ? {
+        pct_text: preset.extra.pct + '%',
+        fill_pct: preset.extra.pct / 100,
+        spent_text: loc.extra_usage_spent.replace('{used}', preset.extra.used).replace('{limit}', preset.extra.limit),
+    } : null;
+
+    let status = typeof preset.status === 'function' ? preset.status() : preset.status;
+    if (status && status.staticKey) {
+        status = { text: loc[status.staticKey], is_error: status.is_error, refreshing: status.refreshing };
+    }
+
+    return { profile: preset.profile, usage, extra, installations: preset.installations || [], status };
+}
+
+// Try both layouts: server rooted at the repo (dev.html under
+// /usage_monitor/popup/) and at the package (dev.html under /popup/).
+async function loadLocale(code) {
+    // Cache-buster so edits to the locale files show up without a hard reload.
+    const bust = `?t=${Date.now()}`;
+    for (const base of ['../../locale', '../locale']) {
+        const response = await fetch(`${base}/${code}.json${bust}`, { cache: 'no-store' });
+        if (response.ok) return response.json();
+    }
+    throw new Error(`Could not load locale "${code}". Start the server from the repo root: python -m http.server 8080`);
+}
+
+// Reload the iframe and resolve once popup.html has finished loading.
+function reloadFrame() {
+    return new Promise((resolve) => {
+        iframe.addEventListener('load', resolve, { once: true });
+        iframe.src = 'popup.html';
+    });
+}
+
+// Apply a language: reload the frame and re-run init() so the new translations
+// (which popup.js only reads in init()) take effect.
+async function applyLanguage(code) {
+    currentLang = code;
+    currentLocale = await loadLocale(code);
+    await reloadFrame();
+    win().pywebview = { api: { close() {}, open_url() {},
+        set_pinned(pinned) { return Promise.resolve(pinned); },
+        begin_drag() { return Promise.resolve(true); },
+        drag() { return Promise.resolve(true); },
+        end_drag() {},
+        report_height(h) {
+            iframe.style.height = h + 'px';
+            iframe.style.visibility = 'visible';
+        } } };
+    // Demo set so toggling the pin button previews compact hiding of both
+    // whole sections and an individual usage bar.
+    const compactHide = ['account', 'extra_usage', 'claude_code', 'status', 'seven_day_opus'];
+    win().init({ colors: COLORS, t: buildTranslations(currentLocale), app_version: '1.13.0', compact_hide: compactHide, data: resolveData(currentPreset, currentLocale) });
+}
+
+function loadPreset(name) {
+    currentPreset = name;
+    location.hash = name;
+    win().updateData(resolveData(name, currentLocale));
+}
+
+function randomize() {
+    location.hash = 'randomize';
+    currentPreset = 'full';
+    const data = resolveData('full', currentLocale);
+    for (const entry of data.usage) {
+        const pct = Math.round(Math.random() * 100);
+        entry.fill_pct = pct / 100;
+        entry.pct_text = pct + '%';
+        entry.warn = entry.marker_rel !== null && pct / 100 > entry.marker_rel;
+    }
+    if (data.extra) {
+        const pct = Math.round(Math.random() * 100);
+        data.extra.fill_pct = pct / 100;
+        data.extra.pct_text = pct + '%';
+    }
+    win().updateData(data);
+}
+
+for (const [code, name] of LANGS) {
+    const option = document.createElement('option');
+    option.value = code;
+    option.textContent = `${name} (${code})`;
+    langSelect.append(option);
+}
+langSelect.value = currentLang;
+langSelect.addEventListener('change', () => applyLanguage(langSelect.value));
+
+(async () => {
+    const hash = location.hash.slice(1);
+    if (PRESETS[hash]) currentPreset = hash;
+    await applyLanguage(currentLang);
+    if (hash === 'randomize') randomize();
+})();
+</script>
+</body>
+</html>
