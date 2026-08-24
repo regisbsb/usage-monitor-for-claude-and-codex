@@ -11,12 +11,13 @@ import ctypes
 import threading
 import time
 import unittest
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from usage_monitor.cache import CacheSnapshot
 from usage_monitor.popup import (
     UsagePopup, _BASELINE_DPI, _MONITORINFO, _SWP_NOACTIVATE, _SWP_NOSIZE, _SWP_NOZORDER,
-    _init_config, _snapshot_to_dict, _usage_entries,
+    _PopupApi, _init_config, _snapshot_to_dict, _usage_entries,
 )
 
 
@@ -33,6 +34,18 @@ def _snap(
         last_error=last_error,
         version=version,
     )
+
+
+class TestPopupHtml(unittest.TestCase):
+    """Static structure checks for the compact footer controls."""
+
+    def test_refresh_glyph_is_inline_between_status_and_version(self):
+        html = (Path(__file__).parent.parent / 'usage_monitor' / 'popup' / 'popup.html').read_text(encoding='utf-8')
+        footer = html[html.index('<footer id="statusSection">'):html.index('</footer>')]
+
+        self.assertIn('<button type="button" id="refreshBtn">↻</button>', footer)
+        self.assertLess(footer.index('id="statusText"'), footer.index('id="refreshBtn"'))
+        self.assertLess(footer.index('id="refreshBtn"'), footer.index('id="appVersion"'))
 
 
 # ---------------------------------------------------------------------------
@@ -565,6 +578,7 @@ class TestInitConfig(unittest.TestCase):
         self.assertEqual(t['changelog'], T['changelog'])
         self.assertEqual(t['pin_popup'], T['pin_popup'])
         self.assertEqual(t['unpin_popup'], T['unpin_popup'])
+        self.assertEqual(t['refresh'], T['refresh'])
         self.assertEqual(t['status_updated_s'], T['status_updated_s'])
         self.assertEqual(t['status_updated'], T['status_updated'])
         self.assertEqual(t['status_refreshing'], T['status_refreshing'])
@@ -586,6 +600,47 @@ class TestInitConfig(unittest.TestCase):
         config = _init_config(snap)
         self.assertEqual(config['data']['profile']['email'], 'a@b.com')
         self.assertEqual(set(config['data'].keys()), {'profile', 'usage', 'extra', 'installations', 'status'})
+
+
+# ---------------------------------------------------------------------------
+# Refresh bridge
+# ---------------------------------------------------------------------------
+
+class TestRefreshBridge(unittest.TestCase):
+    """Tests for the popup's provider-scoped manual refresh bridge."""
+
+    def test_refresh_delegates_then_returns_current_serialized_snapshot(self):
+        old_snap = _snap(usage={'five_hour': {'utilization': 10, 'resets_at': ''}}, version=1)
+        new_snap = _snap(usage={'five_hour': {'utilization': 42, 'resets_at': ''}}, version=2)
+        app = MagicMock()
+        app.cache.snapshot = old_snap
+        app._next_poll_time = 1234.0
+        app.settings.popup_fields = ['five_hour']
+        app.refresh_now.side_effect = lambda: setattr(app.cache, 'snapshot', new_snap)
+
+        popup = object.__new__(UsagePopup)
+        popup.app = app
+        popup._find_installations = MagicMock(return_value=[])
+
+        result = _PopupApi(popup).refresh()
+
+        app.refresh_now.assert_called_once_with()
+        self.assertEqual(result['usage'][0]['pct_text'], '42%')
+        self.assertEqual(result['status']['next_poll_time'], 1234.0)
+
+    def test_refresh_uses_owning_provider_installations(self):
+        app = MagicMock()
+        app.cache.snapshot = _snap()
+        app._next_poll_time = None
+        app.settings.popup_fields = []
+
+        popup = object.__new__(UsagePopup)
+        popup.app = app
+        popup._find_installations = MagicMock(return_value=[{'name': 'Codex CLI', 'version': '1.2.3'}])
+
+        result = _PopupApi(popup).refresh()
+
+        self.assertEqual(result['installations'], [{'name': 'Codex CLI', 'version': '1.2.3'}])
 
 
 # ---------------------------------------------------------------------------

@@ -62,10 +62,13 @@ Each icon operates on its own provider:
 | Hover | Shows that provider's configured quota windows and reset times |
 | Left-click | Opens that provider's detail popup |
 | Double-click | Runs that provider's `on_double_click_command` when configured |
-| Right-click | Opens provider actions plus shared restart, autostart, project, and quit actions |
+| **Refresh now** in a popup or tray menu | Immediately refreshes only that provider's usage and profile |
+| Right-click | Opens that provider's refresh and event-command actions plus shared restart, autostart, project, and quit actions |
 | Escape or click outside | Closes an unpinned popup |
 
-Restart, quit, and **Start with Windows** affect the combined application and therefore both icons. Provider usage, alerts, and event commands remain isolated.
+An explicit **Refresh now** request is the narrow user-initiated exception to the selected provider's normal `poll_fast` successful-fetch spacing. It uses that provider's existing authentication and transport path; refreshing Claude does not call, wake, or reset Codex, and refreshing Codex does not call, wake, or reset Claude.
+
+Restart, quit, and **Start with Windows** affect the combined application and therefore both icons. Provider usage, refreshes, alerts, and event commands remain isolated.
 
 ## Provider homes
 

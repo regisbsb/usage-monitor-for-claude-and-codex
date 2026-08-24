@@ -196,13 +196,32 @@ footer {
     gap: 8px;
 
     & > #statusText {
+        flex: 1 1 auto;
         min-width: 0;
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
     }
 
+    & > #refreshBtn {
+        flex: 0 0 auto;
+        border: 0;
+        padding: 0;
+        color: inherit;
+        background: transparent;
+        font: inherit;
+        line-height: 1;
+        cursor: pointer;
+
+        &:disabled { cursor: default; }
+        &.refreshing { animation: refresh-spin 0.8s linear infinite; }
+    }
+
     & > #appVersion { flex-shrink: 0; }
 
     &.error > #statusText { color: var(--bar-fg-warn); }
+}
+
+@keyframes refresh-spin {
+    to { transform: rotate(360deg); }
 }

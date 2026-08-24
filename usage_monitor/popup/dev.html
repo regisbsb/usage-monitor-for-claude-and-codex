@@ -158,6 +158,7 @@ function buildTranslations(loc) {
     return {
         title: loc.popup_title, account: loc.account, email: loc.email, plan: loc.plan,
         usage: loc.usage, extra_usage: loc.extra_usage, claude_code: loc.claude_code, changelog: loc.changelog,
+        refresh: loc.refresh,
         status_updated_s: loc.status_updated_s, status_updated: loc.status_updated,
         status_next_update: loc.status_next_update, status_refreshing: loc.status_refreshing,
         duration_hm: loc.duration_hm, duration_m: loc.duration_m, duration_s: loc.duration_s,
@@ -240,6 +241,7 @@ async function applyLanguage(code) {
     currentLocale = await loadLocale(code);
     await reloadFrame();
     win().pywebview = { api: { close() {}, open_url() {},
+        refresh() { return Promise.resolve(resolveData(currentPreset, currentLocale)); },
         set_pinned(pinned) { return Promise.resolve(pinned); },
         begin_drag() { return Promise.resolve(true); },
         drag() { return Promise.resolve(true); },

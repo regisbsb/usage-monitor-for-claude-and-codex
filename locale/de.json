@@ -11,6 +11,7 @@
     "quit": "Beenden",
     "autostart": "Mit Windows starten",
     "restart": "Neu starten",
+    "refresh": "Jetzt aktualisieren",
     "menu_project": "Projekt auf GitHub",
     "test_commands": "Ereignisbefehle testen",
     "test_reset_5h": "Reset (5-Stunden)",

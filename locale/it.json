@@ -11,6 +11,7 @@
     "quit": "Esci",
     "autostart": "Avvia con Windows",
     "restart": "Riavvia",
+    "refresh": "Aggiorna ora",
     "menu_project": "Progetto su GitHub",
     "test_commands": "Testa comandi eventi",
     "test_reset_5h": "Reset (5 ore)",

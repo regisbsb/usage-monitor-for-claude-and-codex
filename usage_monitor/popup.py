@@ -199,6 +199,7 @@ def _init_config(
             'usage': T['usage'], 'extra_usage': T['extra_usage'],
             'claude_code': cli_label or T['claude_code'], 'changelog': T['changelog'],
             'pin_popup': T['pin_popup'], 'unpin_popup': T['unpin_popup'],
+            'refresh': T['refresh'],
             'status_updated_s': T['status_updated_s'], 'status_updated': T['status_updated'],
             'status_next_update': T['status_next_update'], 'status_refreshing': T['status_refreshing'],
             'duration_hm': T['duration_hm'], 'duration_m': T['duration_m'], 'duration_s': T['duration_s'],
@@ -227,6 +228,15 @@ class _PopupApi:
     def open_url(self) -> None:
         provider = getattr(self._popup.app, 'provider', None)
         webbrowser.open(getattr(provider, 'changelog_url', CHANGELOG_URL))
+
+    def refresh(self) -> dict[str, Any]:
+        """Refresh the owning provider and return its current popup snapshot."""
+        self._popup.app.refresh_now()
+        return self._popup._serialize_snapshot(
+            self._popup.app.cache.snapshot,
+            installations=self._popup._find_installations(),
+            next_poll_time=self._popup.app._next_poll_time,
+        )
 
     def set_pinned(self, pinned: bool) -> bool:
         return self._popup._set_pinned(pinned)
@@ -341,6 +351,18 @@ class UsagePopup:
                     'version': str(getattr(installation, 'version', '')),
                 })
         return normalized
+
+    def _serialize_snapshot(
+        self, snap: CacheSnapshot, *, installations: list[dict[str, str]], next_poll_time: float | None,
+    ) -> dict[str, Any]:
+        """Serialize one provider snapshot using this popup's display settings."""
+        settings = getattr(self.app, 'settings', None)
+        return _snapshot_to_dict(
+            snap,
+            installations=installations,
+            next_poll_time=next_poll_time,
+            popup_fields=settings.popup_fields if settings is not None else None,
+        )
 
     def _on_loaded(self) -> None:
         """Inject config and show the window transparently for layout."""
@@ -607,12 +629,8 @@ class UsagePopup:
                     continue
                 if snap.version != self._last_version:
                     cached_installations = self._find_installations()
-                settings = getattr(self.app, 'settings', None)
-                data = _snapshot_to_dict(
-                    snap,
-                    installations=cached_installations,
-                    next_poll_time=next_poll_time,
-                    popup_fields=settings.popup_fields if settings is not None else None,
+                data = self._serialize_snapshot(
+                    snap, installations=cached_installations, next_poll_time=next_poll_time,
                 )
                 self._window.evaluate_js(f'updateData({json.dumps(data)})')
                 # Commit the markers only after a successful push, so a failed

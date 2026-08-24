@@ -72,7 +72,7 @@ This file is the authoritative repository guidance for Usage Monitor for Claude 
 ## Polling and concurrency
 
 - Each provider owns its polling cooldown, recovery guard, account fingerprint, notification state, and child/HTTP recovery state. Never share these mutable fields across providers.
-- A successful fetch cannot occur more often than that provider's `poll_fast` interval except for its narrowly defined confirmed-account-switch path.
+- A successful fetch cannot occur more often than that provider's `poll_fast` interval except for its narrowly defined confirmed-account-switch path or an explicit user-initiated refresh from that provider's popup or tray menu. A manual refresh must remain provider-scoped and use only that provider's existing authentication and transport boundary.
 - Reset alignment must not schedule inside the final `poll_fast - reset_buffer` seconds before a reset.
 - Account identity changes must be confirmed from the same provider and must clear only that provider's alert/reset baselines.
 - Mock time through the module under test. Add concurrency, boundary, empty, null, malformed, and provider-isolation tests for behavior changes.

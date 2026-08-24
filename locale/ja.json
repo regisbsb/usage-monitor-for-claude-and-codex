@@ -11,6 +11,7 @@
     "quit": "終了",
     "autostart": "Windows起動時に開始",
     "restart": "再起動",
+    "refresh": "今すぐ更新",
     "menu_project": "GitHubのプロジェクト",
     "test_commands": "イベントコマンドをテスト",
     "test_reset_5h": "リセット (5時間)",

@@ -105,7 +105,9 @@ Each provider accepts its own polling values:
 | `max_backoff` | `900` | Maximum retained provider backoff where applicable |
 | `idle_pause` | `300` | Seconds before ordinary polling pauses; `0` disables idle pause |
 
-`poll_fast` must not exceed `poll_interval`. Each provider has its own cooldown, backoff, reset alignment, error streak, and account-switch state. A Claude backoff must not delay Codex, and a Codex app-server restart must not delay Claude.
+`poll_fast` must not exceed `poll_interval`. Successful scheduled fetches respect that provider's `poll_fast` spacing. An explicit user click on **Refresh now** in a provider popup or tray menu is the narrow exception: it requests an immediate fetch only for that provider, using the same provider-specific authentication and transport path.
+
+Each provider has its own cooldown, backoff, reset alignment, error streak, account-switch state, and manual-refresh request. A Claude refresh or backoff must not call, wake, reset, or delay Codex, and a Codex refresh or app-server restart must not call, wake, reset, or delay Claude.
 
 ## Quota field names
 

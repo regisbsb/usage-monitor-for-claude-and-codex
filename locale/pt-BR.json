@@ -11,6 +11,7 @@
     "quit": "Sair",
     "autostart": "Iniciar com o Windows",
     "restart": "Reiniciar",
+    "refresh": "Atualizar agora",
     "menu_project": "Projeto no GitHub",
     "test_commands": "Testar comandos de eventos",
     "test_reset_5h": "Reset (5 horas)",

@@ -132,6 +132,12 @@ class ProviderMonitor:
         self._popup_closed_at = 0.0
         self._next_poll_time: float | None = None
 
+        # Popup and tray requests share one per-provider manual refresh.  The
+        # provider cache continues to own serialization with scheduled polls.
+        self._manual_refresh_lock = threading.Lock()
+        self._manual_refresh_condition = threading.Condition(self._manual_refresh_lock)
+        self._manual_refresh_active = False
+
         # Theme state
         self._light_taskbar = taskbar_uses_light_theme()
 
@@ -170,6 +176,7 @@ class ProviderMonitor:
                     or settings.on_threshold_command or settings.on_double_click_command
                 )),
                 pystray.MenuItem(T['restart'], self.on_restart),
+                pystray.MenuItem(T['refresh'], self.on_refresh),
                 pystray.Menu.SEPARATOR,
                 pystray.MenuItem(T['menu_project'], self.on_open_project),
                 pystray.Menu.SEPARATOR,
@@ -206,6 +213,46 @@ class ProviderMonitor:
     def on_restart(self, icon: Any = None, item: Any = None) -> None:
         self.restart_requested = True
         self.supervisor.request_restart()
+
+    def on_refresh(self, icon: Any = None, item: Any = None) -> None:
+        """Request this provider's refresh without blocking the tray thread."""
+        self.request_refresh()
+
+    def request_refresh(self) -> bool:
+        """Start a daemon worker for this provider's manual refresh.
+
+        Returns
+        -------
+        bool
+            True after the worker was started.
+        """
+        worker = threading.Thread(target=self.refresh_now, daemon=True)
+        worker.start()
+        return True
+
+    def refresh_now(self) -> bool:
+        """Run one forced provider refresh, coalescing concurrent manual requests.
+
+        Returns
+        -------
+        bool
+            True when this call performed the refresh, or False when another
+            manual refresh for this provider satisfied this request.
+        """
+        with self._manual_refresh_condition:
+            if self._manual_refresh_active:
+                while self._manual_refresh_active:
+                    self._manual_refresh_condition.wait()
+                return False
+            self._manual_refresh_active = True
+
+        try:
+            self.update(force=True)
+        finally:
+            with self._manual_refresh_condition:
+                self._manual_refresh_active = False
+                self._manual_refresh_condition.notify_all()
+        return True
 
     def on_open_project(self, icon: Any = None, item: Any = None) -> None:
         webbrowser.open(self.provider.project_url)
