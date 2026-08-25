@@ -29,6 +29,8 @@ from .tray_icon import create_icon_image, create_status_image, taskbar_uses_ligh
 
 __all__ = ['ProviderMonitor', 'crash_log']
 
+_COMBINED_PROJECT_URL = 'https://github.com/regisbsb/usage-monitor-for-claude-and-codex'
+
 # Seconds after a reset at which to place the confirming poll.  A small buffer
 # absorbs minor timing differences (clocks, caches, server-side propagation).
 RESET_BUFFER = 5
@@ -178,7 +180,10 @@ class ProviderMonitor:
                 pystray.MenuItem(T['restart'], self.on_restart),
                 pystray.MenuItem(T['refresh'], self.on_refresh),
                 pystray.Menu.SEPARATOR,
-                pystray.MenuItem(T['menu_project'], self.on_open_project),
+                pystray.MenuItem(T['menu_project'], pystray.Menu(
+                    pystray.MenuItem(T['menu_combined_project'], self.on_open_combined_project),
+                    pystray.MenuItem(T['menu_original_project'], self.on_open_original_project),
+                )),
                 pystray.Menu.SEPARATOR,
                 pystray.MenuItem(T['quit'], self.on_quit),
             ),
@@ -254,7 +259,10 @@ class ProviderMonitor:
                 self._manual_refresh_condition.notify_all()
         return True
 
-    def on_open_project(self, icon: Any = None, item: Any = None) -> None:
+    def on_open_combined_project(self, icon: Any = None, item: Any = None) -> None:
+        webbrowser.open(_COMBINED_PROJECT_URL)
+
+    def on_open_original_project(self, icon: Any = None, item: Any = None) -> None:
         webbrowser.open(self.provider.project_url)
 
     def on_test_reset_5h(self, icon: Any = None, item: Any = None) -> None:

@@ -13,6 +13,8 @@
     "restart": "Перезапустити",
     "refresh": "Оновити зараз",
     "menu_project": "Проект на GitHub",
+    "menu_combined_project": "Об'єднаний проект",
+    "menu_original_project": "Оригінальний проект",
     "test_commands": "Тестувати команди подій",
     "test_reset_5h": "Скидання (5-годин)",
     "test_reset_7d": "Скидання (7-днів)",

@@ -13,6 +13,8 @@
     "restart": "Mulai Ulang",
     "refresh": "Segarkan sekarang",
     "menu_project": "Proyek di GitHub",
+    "menu_combined_project": "Proyek gabungan",
+    "menu_original_project": "Proyek asli",
     "test_commands": "Uji perintah event",
     "test_reset_5h": "Reset (5-jam)",
     "test_reset_7d": "Reset (7-hari)",

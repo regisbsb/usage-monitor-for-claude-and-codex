@@ -70,6 +70,8 @@ An explicit **Refresh now** request is the narrow user-initiated exception to th
 
 Restart, quit, and **Start with Windows** affect the combined application and therefore both icons. Provider usage, refreshes, alerts, and event commands remain isolated.
 
+**Project on GitHub** contains links to this combined repository and to the original provider project represented by that tray icon.
+
 ## Provider homes
 
 The default roots are `~/.claude` and `~/.codex`. Select different roots with independent flags:

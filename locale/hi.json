@@ -13,6 +13,8 @@
     "restart": "पुनः आरंभ करें",
     "refresh": "अभी रिफ़्रेश करें",
     "menu_project": "GitHub पर प्रोजेक्ट",
+    "menu_combined_project": "संयुक्त प्रोजेक्ट",
+    "menu_original_project": "मूल प्रोजेक्ट",
     "test_commands": "इवेंट कमांड परीक्षण",
     "test_reset_5h": "रीसेट (5-घंटा)",
     "test_reset_7d": "रीसेट (7-दिन)",

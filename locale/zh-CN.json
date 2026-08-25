@@ -13,6 +13,8 @@
     "restart": "重新启动",
     "refresh": "立即刷新",
     "menu_project": "GitHub 项目",
+    "menu_combined_project": "合并项目",
+    "menu_original_project": "原始项目",
     "test_commands": "测试事件命令",
     "test_reset_5h": "重置 (5小时)",
     "test_reset_7d": "重置 (7天)",

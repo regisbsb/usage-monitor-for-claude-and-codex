@@ -13,6 +13,8 @@
     "restart": "Redémarrer",
     "refresh": "Actualiser maintenant",
     "menu_project": "Projet sur GitHub",
+    "menu_combined_project": "Projet combiné",
+    "menu_original_project": "Projet d'origine",
     "test_commands": "Tester les commandes d'événements",
     "test_reset_5h": "Reset (5 heures)",
     "test_reset_7d": "Reset (7 jours)",

@@ -120,5 +120,30 @@ class TestManualRefresh(unittest.TestCase):
         self.assertEqual(duplicate_results, [False, False])
 
 
+class TestProjectMenu(unittest.TestCase):
+    """Tests for combined and provider-upstream project links."""
+
+    def test_project_submenu_lists_combined_then_original(self) -> None:
+        monitor = _make_monitor()
+        project_item = next(item for item in monitor.icon.menu.items if item is not pystray.Menu.SEPARATOR and item.text == T['menu_project'])
+
+        self.assertIsNotNone(project_item.submenu)
+        self.assertEqual(
+            [item.text for item in project_item.submenu.items],
+            [T['menu_combined_project'], T['menu_original_project']],
+        )
+
+    @patch('usage_monitor.monitor.webbrowser.open')
+    def test_project_submenu_opens_combined_and_provider_urls(self, open_url: MagicMock) -> None:
+        monitor = _make_monitor('codex')
+        project_item = next(item for item in monitor.icon.menu.items if item is not pystray.Menu.SEPARATOR and item.text == T['menu_project'])
+
+        project_item.submenu.items[0](monitor.icon)
+        project_item.submenu.items[1](monitor.icon)
+
+        self.assertEqual(open_url.call_args_list[0].args, ('https://github.com/regisbsb/usage-monitor-for-claude-and-codex',))
+        self.assertEqual(open_url.call_args_list[1].args, ('https://example.invalid',))
+
+
 if __name__ == '__main__':
     unittest.main()

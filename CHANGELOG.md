@@ -14,6 +14,7 @@ This is a fresh combined product derived from [Usage Monitor for Claude](https:/
 - Every event command receives `USAGE_MONITOR_PROVIDER=claude` or `codex`.
 - Migration guidance covers disabling both legacy standalone autostarts before enabling the single combined autostart entry.
 - Provider popups and tray menus offer **Refresh now**, which explicitly bypasses normal cooldown spacing for only the selected provider while preserving its authentication and transport boundary.
+- The tray project menu links to both this combined repository and the selected provider's original upstream project.
 
 ### Changed
 
