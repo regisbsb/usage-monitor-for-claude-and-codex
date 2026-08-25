@@ -38,7 +38,9 @@ __all__ = [
     'LANGUAGE', 'MAX_BACKOFF', 'NOTIFY_CLAUDE_UPDATE',
     'ON_DOUBLE_CLICK_COMMAND', 'ON_RESET_COMMAND', 'ON_STARTUP_COMMAND', 'ON_THRESHOLD_COMMAND',
     'POLL_ERROR', 'POLL_FAST', 'POLL_FAST_EXTRA', 'POLL_INTERVAL',
-    'POPUP_FIELDS', 'SETTINGS_FILENAME', 'TIME_FORMAT', 'TOOLTIP_FIELDS',
+    'POPUP_FIELDS', 'SETTINGS_FILENAME',
+    'STATUS_SERVER_ENABLED', 'STATUS_SERVER_PORT',
+    'TIME_FORMAT', 'TOOLTIP_FIELDS',
     'ProviderSettings', 'get_alert_thresholds', 'get_provider_settings',
 ]
 
@@ -56,6 +58,7 @@ _NUMERIC_BOUNDS: dict[str, int] = {
     'codex_update_interval': 60,
     'log_max_bytes': 1024,
     'log_backup_count': 0,
+    'status_server_port': 1024,
 }
 _COLOR_KEYS = frozenset({'bg', 'fg', 'fg_dim', 'fg_heading', 'fg_link', 'bar_bg', 'bar_fg', 'bar_fg_warn', 'bar_divider', 'bar_marker'})
 _ICON_KEYS = frozenset({'icon_light', 'icon_dark'})
@@ -67,7 +70,7 @@ _VALID_ICON_STYLES = frozenset({'number+bars', 'numbers'})
 _COMMAND_KEYS = frozenset({'on_double_click_command', 'on_reset_command', 'on_startup_command', 'on_threshold_command'})
 _BOOL_KEYS = frozenset({
     'alert_time_aware', 'auto_update_codex_cli', 'enabled',
-    'notify_claude_update', 'notify_codex_update',
+    'notify_claude_update', 'notify_codex_update', 'status_server_enabled',
 })
 _STRING_LIST_KEYS = frozenset({'tooltip_fields', 'compact_hide'})
 _WILDCARD_STRING_LIST_KEYS = frozenset({'popup_fields'})
@@ -524,6 +527,11 @@ ALERT_EXTRA_USAGE_SPENT: list[float] = _S.get('alert_extra_usage_spent', [])
 
 LOG_MAX_BYTES: int = _S.get('log_max_bytes', 2 * 1024 * 1024)
 LOG_BACKUP_COUNT: int = _S.get('log_backup_count', 3)
+
+# Local loopback-only JSON status endpoint (see docs/status-endpoint.md).
+# Read-only and optional: a bind failure never stops the app.
+STATUS_SERVER_ENABLED: bool = _S.get('status_server_enabled', True)
+STATUS_SERVER_PORT: int = _S.get('status_server_port', 45455)
 
 
 def get_alert_thresholds(variant_key: str) -> list[float]:
