@@ -145,5 +145,19 @@ class TestProjectMenu(unittest.TestCase):
         self.assertEqual(open_url.call_args_list[1].args, ('https://example.invalid',))
 
 
+class TestSharedAutostartMenu(unittest.TestCase):
+    """Tests for synchronizing the process-wide autostart checkmark."""
+
+    @patch('usage_monitor.monitor.set_autostart')
+    @patch('usage_monitor.monitor.is_autostart_enabled', return_value=False)
+    def test_toggle_refreshes_both_provider_menus(self, _is_enabled: MagicMock, set_autostart: MagicMock) -> None:
+        monitor = _make_monitor()
+
+        monitor.on_toggle_autostart()
+
+        set_autostart.assert_called_once_with(True)
+        monitor.supervisor.refresh_menus.assert_called_once_with()
+
+
 if __name__ == '__main__':
     unittest.main()

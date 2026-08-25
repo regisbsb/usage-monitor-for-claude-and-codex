@@ -214,6 +214,7 @@ class ProviderMonitor:
 
     def on_toggle_autostart(self, icon: Any = None, item: Any = None) -> None:
         set_autostart(not is_autostart_enabled())
+        self.supervisor.refresh_menus()
 
     def on_restart(self, icon: Any = None, item: Any = None) -> None:
         self.restart_requested = True

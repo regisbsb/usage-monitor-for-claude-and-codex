@@ -24,6 +24,10 @@ This is a fresh combined product derived from [Usage Monitor for Claude](https:/
 - Shared UI, polling, notification, event, DPI, and Windows integration behavior is supervised at the combined product level while provider failures remain isolated.
 - The authoritative combined settings file is searched beside the executable/project first and then under `~/.usage-monitor`; legacy provider files are read-only migration fallbacks.
 
+### Fixed
+
+- Changing **Start with Windows** from either tray icon now refreshes the checkmark in both provider menus.
+
 ### Security
 
 - Privacy and audit documentation now distinguishes Claude credential/HTTPS handling from Codex local app-server handling and records the shared WebView2, event-command, registry, settings, and log boundaries.

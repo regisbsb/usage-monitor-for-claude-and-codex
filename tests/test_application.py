@@ -4,7 +4,7 @@ from __future__ import annotations
 import threading
 import unittest
 from dataclasses import dataclass
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from usage_monitor.application import AppSupervisor
 
@@ -32,6 +32,7 @@ class _Monitor:
         self.running = True
         self.started = threading.Event()
         self.stop_calls = 0
+        self.icon = MagicMock()
 
     def start_detached(self) -> None:
         if self.provider.fail_start:
@@ -97,6 +98,27 @@ class TestAppSupervisor(unittest.TestCase):
 
         self.assertEqual([monitor.provider.provider_id for monitor in supervisor.monitors], ['claude'])
         self.assertEqual(supervisor.providers, [claude])
+
+
+    @patch('usage_monitor.application.ProviderMonitor', _Monitor)
+    def test_refresh_menus_updates_both_provider_icons(self) -> None:
+        providers = [_Provider('claude'), _Provider('codex')]
+        supervisor = AppSupervisor((provider, _Settings()) for provider in providers)
+
+        supervisor.refresh_menus()
+
+        for monitor in supervisor.monitors:
+            monitor.icon.update_menu.assert_called_once_with()
+
+    @patch('usage_monitor.application.ProviderMonitor', _Monitor)
+    def test_refresh_menus_continues_when_one_icon_fails(self) -> None:
+        providers = [_Provider('claude'), _Provider('codex')]
+        supervisor = AppSupervisor((provider, _Settings()) for provider in providers)
+        supervisor.monitors[0].icon.update_menu.side_effect = RuntimeError('menu unavailable')
+
+        supervisor.refresh_menus()
+
+        supervisor.monitors[1].icon.update_menu.assert_called_once_with()
 
 
 if __name__ == '__main__':

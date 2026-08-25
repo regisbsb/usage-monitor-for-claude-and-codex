@@ -42,6 +42,14 @@ class AppSupervisor:
         self.restart_requested = True
         self._stop_event.set()
 
+    def refresh_menus(self) -> None:
+        """Re-render every provider menu after shared process state changes."""
+        for monitor in self.monitors:
+            try:
+                monitor.icon.update_menu()
+            except Exception:
+                pass
+
     def run(self) -> None:
         """Start every icon detached and wait until quit or restart is requested."""
         started: list[ProviderMonitor] = []
