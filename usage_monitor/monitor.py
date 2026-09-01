@@ -276,8 +276,8 @@ class ProviderMonitor:
             'USAGE_MONITOR_UTILIZATION_FIVE_HOUR': '0',
             'USAGE_MONITOR_UTILIZATION_SEVEN_DAY': '45',
             'USAGE_MONITOR_RESETS_AT': _future_iso(hours=5),
-            'USAGE_MONITOR_TITLE': T['notify_reset_title'],
-            'USAGE_MONITOR_MESSAGE': T['notify_reset'],
+            'USAGE_MONITOR_TITLE': self._notification_text('notify_reset_title'),
+            'USAGE_MONITOR_MESSAGE': self._notification_text('notify_reset_provider'),
         }, capture_output=True)
 
     def on_test_reset_7d(self, icon: Any = None, item: Any = None) -> None:
@@ -290,8 +290,8 @@ class ProviderMonitor:
             'USAGE_MONITOR_UTILIZATION_FIVE_HOUR': '12',
             'USAGE_MONITOR_UTILIZATION_SEVEN_DAY': '0',
             'USAGE_MONITOR_RESETS_AT': _future_iso(days=7),
-            'USAGE_MONITOR_TITLE': T['notify_reset_title'],
-            'USAGE_MONITOR_MESSAGE': T['notify_reset'],
+            'USAGE_MONITOR_TITLE': self._notification_text('notify_reset_title'),
+            'USAGE_MONITOR_MESSAGE': self._notification_text('notify_reset_provider'),
         }, capture_output=True)
 
     def on_test_threshold_5h(self, icon: Any = None, item: Any = None) -> None:
@@ -535,8 +535,8 @@ class ProviderMonitor:
         token_refresh = getattr(result, 'token_refresh', None)
         if self.settings.notify_update and token_refresh and token_refresh.updated:
             self.icon.notify(
-                T['notify_update'].format(old=token_refresh.old_version, new=token_refresh.new_version),
-                T['notify_update_title'],
+                self._notification_text('notify_update_provider', old=token_refresh.old_version, new=token_refresh.new_version),
+                self._notification_text('notify_update_provider_title'),
             )
 
         if 'error' in result.data:
@@ -608,7 +608,11 @@ class ProviderMonitor:
                 reset_detected = True
 
         if reset_detected:
-            self._notify_or_defer('reset', T['notify_reset'], T['notify_reset_title'])
+            self._notify_or_defer(
+                'reset',
+                self._notification_text('notify_reset_provider'),
+                self._notification_text('notify_reset_title'),
+            )
 
         # Run reset command on any detected usage drop (independent of notification threshold)
         for key, pct in quota_fields.items():
@@ -637,6 +641,12 @@ class ProviderMonitor:
         self._first_update_done = True
 
     # Notifications
+
+    def _notification_text(self, key: str, **values: Any) -> str:
+        """Format localized notification text for this provider."""
+        values.setdefault('provider', self.provider.display_name)
+        values.setdefault('cli', getattr(self.provider, 'cli_display_name', self.provider.display_name))
+        return T[key].format(**values)
 
     def _notify_or_defer(self, category: str, message: str, title: str) -> None:
         """Show a notification immediately, or defer it if the user is away.
@@ -879,8 +889,8 @@ class ProviderMonitor:
             'USAGE_MONITOR_UTILIZATION_FIVE_HOUR': str(round(pct_5h)),
             'USAGE_MONITOR_UTILIZATION_SEVEN_DAY': str(round(pct_7d)),
             'USAGE_MONITOR_RESETS_AT': entry.get('resets_at', ''),
-            'USAGE_MONITOR_TITLE': T['notify_reset_title'],
-            'USAGE_MONITOR_MESSAGE': T['notify_reset'],
+            'USAGE_MONITOR_TITLE': self._notification_text('notify_reset_title'),
+            'USAGE_MONITOR_MESSAGE': self._notification_text('notify_reset_provider'),
         })
 
     def _run_threshold_command(
@@ -1042,8 +1052,8 @@ class ProviderMonitor:
             maintenance = self.provider.run_maintenance()
             if maintenance and self.settings.notify_update and getattr(maintenance, 'updated', False):
                 self.icon.notify(
-                    T['notify_update'].format(old=maintenance.old_version, new=maintenance.new_version),
-                    T['notify_update_title'],
+                    self._notification_text('notify_update_provider', old=maintenance.old_version, new=maintenance.new_version),
+                    self._notification_text('notify_update_provider_title'),
                 )
 
             if self._last_response.get('auth_error') or self._last_response.get('no_auth'):

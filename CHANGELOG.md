@@ -27,6 +27,7 @@ This is a fresh combined product derived from [Usage Monitor for Claude](https:/
 ### Fixed
 
 - Changing **Start with Windows** from either tray icon now refreshes the checkmark in both provider menus.
+- Codex quota-reset and CLI-update notifications now identify Codex instead of using Claude-specific text.
 
 ### Security
 

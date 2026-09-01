@@ -4,6 +4,7 @@ from __future__ import annotations
 import threading
 import unittest
 from dataclasses import replace
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import MagicMock, patch
 
@@ -20,6 +21,7 @@ def _make_monitor(provider_id: str = 'claude') -> ProviderMonitor:
     provider.provider_id = provider_id
     provider.icon_name = f'usage-monitor-{provider_id}'
     provider.display_name = provider_id.title()
+    provider.cli_display_name = 'Claude Code' if provider_id == 'claude' else 'Codex'
     provider.project_url = 'https://example.invalid'
     provider.custom_config = False
     provider.create_cache.return_value = MagicMock()
@@ -157,6 +159,56 @@ class TestSharedAutostartMenu(unittest.TestCase):
 
         set_autostart.assert_called_once_with(True)
         monitor.supervisor.refresh_menus.assert_called_once_with()
+
+
+class TestProviderNotificationText(unittest.TestCase):
+    """Tests for provider names in shared notification templates."""
+
+    def test_reset_notification_names_codex(self) -> None:
+        monitor = _make_monitor('codex')
+
+        self.assertIn('Codex', monitor._notification_text('notify_reset_provider'))
+        self.assertNotIn('Claude', monitor._notification_text('notify_reset_provider'))
+
+    def test_update_notification_names_each_cli(self) -> None:
+        claude = _make_monitor('claude')
+        codex = _make_monitor('codex')
+
+        self.assertEqual(claude._notification_text('notify_update_provider_title'), 'Claude Code Updated')
+        self.assertEqual(codex._notification_text('notify_update_provider_title'), 'Codex Updated')
+        self.assertIn('Codex updated from 1.0 to 1.1', codex._notification_text('notify_update_provider', old='1.0', new='1.1'))
+
+    def test_codex_reset_path_emits_codex_message(self) -> None:
+        monitor = _make_monitor('codex')
+        monitor.cache.profile = {'account': {'uuid': 'same-account'}}
+        monitor.cache.update.return_value = SimpleNamespace(
+            data={'five_hour': {'utilization': 0.0, 'resets_at': ''}},
+            token_refresh=None,
+        )
+        monitor.provider.result_is_current.return_value = True
+        monitor._prev_account_uuid = 'same-account'
+        monitor._prev_utilization = {'five_hour': 99.0}
+
+        with patch.object(monitor, '_render_tray'), patch.object(monitor, '_is_user_away', return_value=False):
+            monitor.update()
+
+        message, title = monitor.icon.notify.call_args.args
+        self.assertEqual(title, T['notify_reset_title'])
+        self.assertIn('Codex', message)
+        self.assertNotIn('Claude', message)
+
+    def test_codex_maintenance_path_emits_codex_update(self) -> None:
+        monitor = _make_monitor('codex')
+        monitor.provider.run_maintenance.return_value = SimpleNamespace(updated=True, old_version='1.0', new_version='1.1')
+
+        def stop_after_update(*, force: bool = False) -> None:
+            self.assertFalse(force)
+            monitor.running = False
+
+        with patch.object(monitor, 'update', side_effect=stop_after_update):
+            monitor.poll_loop()
+
+        monitor.icon.notify.assert_called_once_with('Codex updated from 1.0 to 1.1.', 'Codex Updated')
 
 
 if __name__ == '__main__':

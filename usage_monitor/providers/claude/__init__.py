@@ -17,6 +17,7 @@ class ClaudeProvider:
 
     provider_id = "claude"
     display_name = "Claude"
+    cli_display_name = "Claude Code"
     icon_name = "usage_monitor_claude"
     auth_error_glyph = "C!"
     zero_state_glyph = "C"

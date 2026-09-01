@@ -20,6 +20,7 @@ class CodexProvider:
 
     provider_id = 'codex'
     display_name = 'Codex'
+    cli_display_name = 'Codex'
     icon_name = 'usage_monitor_codex'
     auth_error_glyph = '>!'
     zero_state_glyph = '>_'
