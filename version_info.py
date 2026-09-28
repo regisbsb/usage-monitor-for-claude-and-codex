@@ -2,8 +2,8 @@
 
 VSVersionInfo(
     ffi=FixedFileInfo(
-        filevers=(1, 0, 0, 0),
-        prodvers=(1, 0, 0, 0),
+        filevers=(1, 0, 1, 0),
+        prodvers=(1, 0, 1, 0),
         mask=0x3F,
         flags=0x0,
         OS=0x40004,          # VOS_NT_WINDOWS32
@@ -17,11 +17,11 @@ VSVersionInfo(
                 [
                     StringStruct('CompanyName', 'Usage Monitor contributors'),
                     StringStruct('FileDescription', 'Usage Monitor for Claude and Codex'),
-                    StringStruct('FileVersion', '1.0.0.0'),
+                    StringStruct('FileVersion', '1.0.1.0'),
                     StringStruct('InternalName', 'UsageMonitorForClaudeAndCodex'),
                     StringStruct('OriginalFilename', 'UsageMonitorForClaudeAndCodex.exe'),
                     StringStruct('ProductName', 'Usage Monitor for Claude and Codex'),
-                    StringStruct('ProductVersion', '1.0.0.0'),
+                    StringStruct('ProductVersion', '1.0.1.0'),
                 ],
             ),
         ]),

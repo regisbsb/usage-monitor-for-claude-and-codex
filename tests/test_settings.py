@@ -267,6 +267,14 @@ class TestSettingsOverrides(unittest.TestCase):
             ('poll_interval', 300), ('poll_fast', 30), ('poll_fast_extra', 5), ('poll_error', 10),
         ])
 
+    def test_weekly_bar_parts_override(self):
+        """The shared weekly pacing section count accepts a bounded integer."""
+        self._assert_overrides({'weekly_bar_parts': 7}, [('weekly_bar_parts', 7)])
+
+    def test_weekly_bar_parts_above_maximum_is_dropped(self):
+        """An excessive weekly pacing section count is rejected."""
+        self._assert_overrides({'weekly_bar_parts': 32}, [], absent=['weekly_bar_parts'])
+
     def test_popup_color_overrides(self):
         """Popup color constants are overridden by settings."""
         settings = {'bg': '#000000', 'fg': '#ffffff', 'bar_fg': '#00ff00'}

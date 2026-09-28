@@ -13,7 +13,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from .i18n import T
-from .settings import CURRENCY_SYMBOL, TIME_FORMAT, TOOLTIP_FIELDS, _SYSTEM_CURRENCY_SYMBOL
+from .settings import CURRENCY_SYMBOL, TIME_FORMAT, TOOLTIP_FIELDS, WEEKLY_BAR_PARTS, _SYSTEM_CURRENCY_SYMBOL
 
 __all__ = [
     'divider_positions', 'elapsed_pct', 'expand_popup_fields', 'field_period', 'format_credits',
@@ -265,14 +265,15 @@ def elapsed_pct(resets_at: str, period_seconds: int) -> float | None:
         return None
 
 
-def divider_positions(resets_at: str, period_seconds: int) -> list[float]:
+def divider_positions(resets_at: str, period_seconds: int, weekly_parts: int | None = None) -> list[float]:
     """Return relative positions (0.0-1.0) of divider marks within a usage period.
 
     Five-hour periods are split into five equal hour sections, independent
-    of clock alignment.  Periods of a day or longer are subdivided at local
-    midnight boundaries (e.g. seven day marks on a weekly bar).  Other
-    sub-day periods have no dividers - their subdivision is a deliberate
-    design decision for if and when such quota types exist.
+    of clock alignment. Seven-day periods are split into the configured
+    number of equal pacing sections. Other periods of a day or longer are
+    subdivided at local midnight boundaries. Other sub-day periods have no
+    dividers - their subdivision is a deliberate design decision for if and
+    when such quota types exist.
 
     Parameters
     ----------
@@ -280,6 +281,9 @@ def divider_positions(resets_at: str, period_seconds: int) -> list[float]:
         ISO 8601 timestamp when the limit resets.
     period_seconds : int
         Total duration of the period in seconds.
+    weekly_parts : int or None
+        Number of equal sections for a seven-day period. ``None`` uses the
+        shared ``weekly_bar_parts`` setting.
 
     Returns
     -------
@@ -298,6 +302,12 @@ def divider_positions(resets_at: str, period_seconds: int) -> list[float]:
             if period_seconds != PERIOD_5H:
                 return []
             return [i / 5 for i in range(1, 5)]
+
+        if period_seconds == PERIOD_7D:
+            parts = WEEKLY_BAR_PARTS if weekly_parts is None else weekly_parts
+            if parts < 1:
+                return []
+            return [i / parts for i in range(1, parts)]
 
         start_utc = reset_utc - timedelta(seconds=period_seconds)
 

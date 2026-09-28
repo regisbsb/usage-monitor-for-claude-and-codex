@@ -40,7 +40,7 @@ __all__ = [
     'POLL_ERROR', 'POLL_FAST', 'POLL_FAST_EXTRA', 'POLL_INTERVAL',
     'POPUP_FIELDS', 'SETTINGS_FILENAME',
     'STATUS_SERVER_ENABLED', 'STATUS_SERVER_PORT',
-    'TIME_FORMAT', 'TOOLTIP_FIELDS',
+    'TIME_FORMAT', 'TOOLTIP_FIELDS', 'WEEKLY_BAR_PARTS',
     'ProviderSettings', 'get_alert_thresholds', 'get_provider_settings',
 ]
 
@@ -59,6 +59,7 @@ _NUMERIC_BOUNDS: dict[str, int] = {
     'log_max_bytes': 1024,
     'log_backup_count': 0,
     'status_server_port': 1024,
+    'weekly_bar_parts': 1,
 }
 _COLOR_KEYS = frozenset({'bg', 'fg', 'fg_dim', 'fg_heading', 'fg_link', 'bar_bg', 'bar_fg', 'bar_fg_warn', 'bar_divider', 'bar_marker'})
 _ICON_KEYS = frozenset({'icon_light', 'icon_dark'})
@@ -197,6 +198,9 @@ def _validate(data: dict, path: Path) -> dict:
                 drop.append(key)
             elif value < min_val:
                 errors.append(f'  {key}: must be >= {min_val}, got {value}')
+                drop.append(key)
+            elif key == 'weekly_bar_parts' and value > 31:
+                errors.append(f'  {key}: must be <= 31, got {value}')
                 drop.append(key)
 
         elif key in _COLOR_KEYS:
@@ -418,6 +422,7 @@ BAR_FG = _S.get('bar_fg', '#4a9eff')
 BAR_FG_WARN = _S.get('bar_fg_warn', '#e05050')
 BAR_DIVIDER = _S.get('bar_divider', '#000c')
 BAR_MARKER = _S.get('bar_marker', '#fffc')
+WEEKLY_BAR_PARTS = _S.get('weekly_bar_parts', 5)
 
 # Tray icon colors
 ICON_LIGHT = _icon_colors('icon_light', {

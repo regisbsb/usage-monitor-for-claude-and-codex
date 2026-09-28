@@ -27,6 +27,7 @@ Shared product settings stay at the top level. Provider-specific polling, quota 
 {
   "language": "en",
   "time_format": "24h",
+  "weekly_bar_parts": 5,
   "log_max_bytes": 2097152,
   "log_backup_count": 3,
   "bg": "#1e1e1e",
@@ -87,10 +88,13 @@ The shared layer controls presentation and product-level storage. Supported shar
 | `time_format` | Windows regional clock | `24h` or `12h` |
 | `log_max_bytes` | `2097152` | Maximum active combined log size; minimum `1024` |
 | `log_backup_count` | `3` | Number of rotated combined logs; minimum `1` |
+| `weekly_bar_parts` | `5` | Equal pacing sections shown on seven-day usage bars; integer from `1` to `31` |
 
 Popup colors are also shared top-level strings: `bg`, `fg`, `fg_dim`, `fg_heading`, `fg_link`, `bar_bg`, `bar_fg`, `bar_fg_warn`, `bar_divider`, and `bar_marker`.
 
 Shared settings do not merge provider account state. They only give the two provider popups a consistent product presentation.
+
+`weekly_bar_parts` changes only the visual pacing guides. The provider's quota remains a seven-day window, and the elapsed-time marker still follows the real reset period. The default of `5` supports a five-day workweek; set it to `7` for seven equal calendar-day budgets.
 
 ## Provider polling
 

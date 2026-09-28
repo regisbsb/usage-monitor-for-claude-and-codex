@@ -467,12 +467,19 @@ class TestDividerPositions(unittest.TestCase):
         for period_seconds in (3600, 3 * 3600, 23 * 3600):
             self.assertEqual(divider_positions(reset_iso, period_seconds), [])
 
-    def test_7d_period_has_seven_midnights(self):
-        """7-day period from noon to noon has exactly 7 internal midnight boundaries."""
-        # Period: Jan 15 12:00 to Jan 22 12:00 local - midnights on Jan 16-22
+    def test_7d_period_has_five_equal_parts_by_default(self):
+        """Seven-day bars default to five equal workweek pacing sections."""
         reset_iso = self._local_to_utc_iso(datetime(2025, 1, 22, 12, 0, 0))
         result = divider_positions(reset_iso, PERIOD_7D)
-        self.assertEqual(len(result), 7)
+        self.assertEqual(result, [0.2, 0.4, 0.6, 0.8])
+
+    def test_7d_period_accepts_custom_part_count(self):
+        """The weekly pacing section count can be customized without changing the period."""
+        reset_iso = self._local_to_utc_iso(datetime(2025, 1, 22, 12, 0, 0))
+        result = divider_positions(reset_iso, PERIOD_7D, weekly_parts=7)
+        self.assertEqual(len(result), 6)
+        for position, expected in zip(result, (1 / 7, 2 / 7, 3 / 7, 4 / 7, 5 / 7, 6 / 7)):
+            self.assertAlmostEqual(position, expected)
 
     def test_exactly_one_day_period_uses_midnights(self):
         """A period of exactly 24h subdivides at midnights, not hours."""
@@ -498,50 +505,18 @@ class TestDividerPositions(unittest.TestCase):
 
     def test_near_zero_positions_filtered(self):
         """Midnight positions very close to 0.0 (< 0.003) are filtered out."""
-        # Period: Jan 15 23:59:50 to Jan 22 23:59:50 local. First midnight is 10s in ≈ 0.0000165, filtered.
+        # Period: Jan 16 23:59:50 to Jan 22 23:59:50 local. First midnight is 10s in and is filtered.
         reset_iso = self._local_to_utc_iso(datetime(2025, 1, 22, 23, 59, 50))
-        result = divider_positions(reset_iso, PERIOD_7D)
-        self.assertEqual(len(result), 6)
+        result = divider_positions(reset_iso, 6 * 24 * 3600)
+        self.assertEqual(len(result), 5)
         for pos in result:
             self.assertGreater(pos, 0.003)
 
-    def _assert_dividers_on_local_midnights(self, reset_iso: str):
-        """Every 7-day divider must land on a real local midnight - also when a
-        DST changeover falls inside the period (the section lengths then differ,
-        but each boundary is still a true midnight)."""
-        positions = divider_positions(reset_iso, PERIOD_7D)
-        self.assertEqual(len(positions), 7)
-
-        start_utc = datetime.fromisoformat(reset_iso) - timedelta(seconds=PERIOD_7D)
-        for rel in positions:
-            local = (start_utc + timedelta(seconds=round(rel * PERIOD_7D))).astimezone()
-            self.assertEqual(
-                (local.hour, local.minute, local.second), (0, 0, 0),
-                f'divider at {local.isoformat()} is not a local midnight',
-            )
-
-    def test_dividers_stay_on_midnights_across_autumn_dst(self):
-        """A week spanning the late-October changeover (EU zones) keeps every
-        divider on a local midnight instead of drifting by the DST shift."""
-        self._assert_dividers_on_local_midnights('2026-10-28T11:00:00+00:00')
-
-    def test_dividers_stay_on_midnights_across_early_november_dst(self):
-        """A week spanning the early-November changeover (US zones) keeps every
-        divider on a local midnight instead of drifting by the DST shift."""
-        self._assert_dividers_on_local_midnights('2026-11-04T11:00:00+00:00')
-
-    def test_dividers_stay_on_midnights_across_spring_dst(self):
-        """A week spanning the late-March changeover (EU zones) keeps every
-        divider on a local midnight instead of drifting by the DST shift."""
-        self._assert_dividers_on_local_midnights('2027-03-31T11:00:00+00:00')
-
-    def test_7d_first_position_approximately_correct(self):
-        """First midnight in a 7d period starting at noon is at roughly 1/14 of the bar."""
-        # Period: Jan 15 12:00 to Jan 22 12:00 local. First midnight is 12h into 168h = 1/14
-        reset_iso = self._local_to_utc_iso(datetime(2025, 1, 22, 12, 0, 0))
-        result = divider_positions(reset_iso, PERIOD_7D)
-        self.assertGreater(len(result), 0)
-        self.assertAlmostEqual(result[0], 12 / 168, places=2)
+    def test_7d_parts_are_independent_of_reset_time_and_dst(self):
+        """Weekly pacing remains equal regardless of reset alignment or DST."""
+        expected = [0.2, 0.4, 0.6, 0.8]
+        for reset_iso in ('2026-10-28T11:00:00+00:00', '2026-11-04T11:00:00+00:00', '2027-03-31T11:00:00+00:00'):
+            self.assertEqual(divider_positions(reset_iso, PERIOD_7D), expected)
 
 
 # ---------------------------------------------------------------------------

@@ -6,6 +6,14 @@ This is a fresh combined product derived from [Usage Monitor for Claude](https:/
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-09-27
+
+### Changed
+
+- Seven-day usage bars are now divided into five equal workweek pacing sections by default; the shared `weekly_bar_parts` setting can customize the section count.
+
+## [1.0.0] - 2026-09-01
+
 ### Added
 
 - One Windows application now monitors Claude and Codex simultaneously through two independent tray icons, provider caches, polling loops, popups, alerts, and event-command surfaces.
