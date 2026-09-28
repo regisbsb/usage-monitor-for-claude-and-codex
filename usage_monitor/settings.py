@@ -34,7 +34,7 @@ __all__ = [
     'BAR_BG', 'BAR_DIVIDER', 'BAR_FG', 'BAR_FG_WARN', 'BAR_MARKER', 'BG',
     'CLI_COMMAND', 'COMPACT_HIDE', 'CURRENCY_SYMBOL',
     'FG', 'FG_DIM', 'FG_HEADING', 'FG_LINK',
-    'ICON_DARK', 'ICON_FIELDS', 'ICON_LIGHT', 'ICON_STYLE', 'IDLE_PAUSE',
+    'ICON_DARK', 'ICON_FIELDS', 'ICON_LIGHT', 'ICON_STYLE', 'IDLE_INTERVAL', 'IDLE_PAUSE',
     'LANGUAGE', 'MAX_BACKOFF', 'NOTIFY_CLAUDE_UPDATE',
     'ON_DOUBLE_CLICK_COMMAND', 'ON_RESET_COMMAND', 'ON_STARTUP_COMMAND', 'ON_THRESHOLD_COMMAND',
     'POLL_ERROR', 'POLL_FAST', 'POLL_FAST_EXTRA', 'POLL_INTERVAL',
@@ -55,6 +55,7 @@ _NUMERIC_BOUNDS: dict[str, int] = {
     'poll_error': 1,
     'max_backoff': 1,
     'idle_pause': 0,
+    'idle_interval': 1,
     'codex_update_interval': 60,
     'log_max_bytes': 1024,
     'log_backup_count': 0,
@@ -410,6 +411,7 @@ POLL_FAST_EXTRA = _S.get('poll_fast_extra', 2)
 POLL_ERROR = _S.get('poll_error', 30)
 MAX_BACKOFF = _S.get('max_backoff', 900)
 IDLE_PAUSE = _S.get('idle_pause', 300)
+IDLE_INTERVAL = _S.get('idle_interval', 900)
 
 # Popup theme
 BG = _S.get('bg', '#1e1e1e')
@@ -584,6 +586,7 @@ class ProviderSettings:
     poll_error: int
     max_backoff: int
     idle_pause: int
+    idle_interval: int
     icon_fields: list[str]
     icon_style: str
     tooltip_fields: list[str]
@@ -636,6 +639,7 @@ def get_provider_settings(provider_id: str) -> ProviderSettings:
         poll_error=values.get('poll_error', POLL_ERROR),
         max_backoff=values.get('max_backoff', MAX_BACKOFF),
         idle_pause=values.get('idle_pause', IDLE_PAUSE),
+        idle_interval=values.get('idle_interval', IDLE_INTERVAL),
         icon_fields=list(values.get('icon_fields', ICON_FIELDS)),
         icon_style=values.get('icon_style', ICON_STYLE),
         tooltip_fields=list(values.get('tooltip_fields', TOOLTIP_FIELDS)),

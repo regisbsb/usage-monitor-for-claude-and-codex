@@ -11,7 +11,7 @@ This repository combines selected behavior from [Usage Monitor for Claude](https
 - One portable `UsageMonitorForClaudeAndCodex.exe` with no installer or separate Python runtime
 - Two provider-labelled tray icons with independent percentages, bars, tooltips, and detail popups
 - Provider-specific alerts for usage thresholds and quota resets
-- Adaptive polling that pauses while Windows is idle or locked and aligns updates around resets
+- Adaptive polling that slows while Windows is idle or locked and aligns updates around resets
 - Optional provider-scoped event commands for reset, threshold, startup, and double-click actions
 - One combined Windows autostart entry, single-instance identity, notification identity, settings file, and sanitized rotating log
 - An optional loopback-only JSON [status endpoint](docs/status-endpoint.md) for local integrations to read current usage

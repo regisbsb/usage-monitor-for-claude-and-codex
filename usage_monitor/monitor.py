@@ -20,9 +20,9 @@ import pystray  # type: ignore[import-untyped]  # no type stubs available
 
 from .autostart import is_autostart_enabled, set_autostart, sync_autostart_path
 from .command import run_event_command
-from .idle import get_idle_seconds, is_workstation_locked
+from .idle import get_idle_seconds, is_screensaver_running, is_workstation_locked
 from .settings import ProviderSettings
-from .formatting import elapsed_pct, field_period, format_credits, format_tooltip, parse_field_name, popup_label, resolve_display_fields
+from .formatting import elapsed_pct, field_period, format_credits, format_tooltip, is_active_quota, parse_field_name, popup_label, resolve_display_fields
 from .i18n import T
 from .popup import UsagePopup
 from .tray_icon import create_icon_image, create_status_image, taskbar_uses_light_theme, watch_theme_change
@@ -122,7 +122,6 @@ class ProviderMonitor:
         self._fast_polls_remaining = 0
         self._auth_error_streak = 0
         self._last_maintenance_check: float | None = None
-        self._idle_reset_pending = False
         # Guarded by _notify_lock: deferrals arrive from the popup and poll
         # threads while the poll loop flushes.
         self._notify_lock = threading.Lock()
@@ -491,6 +490,7 @@ class ProviderMonitor:
             )
         self.icon.title = self._tooltip_prefix + format_tooltip(
             data, self.settings.tooltip_fields, f'{self.provider.display_name} Usage',
+            getattr(self.provider, 'auth_error_label', None), getattr(self.provider, 'auth_error_short', None),
         )
 
     def _on_theme_changed(self) -> None:
@@ -583,7 +583,7 @@ class ProviderMonitor:
         for key, value in result.data.items():
             if key == 'extra_usage':
                 continue
-            if isinstance(value, dict) and 'utilization' in value:
+            if is_active_quota(key, value):
                 quota_fields[key] = value.get('utilization', 0) or 0
 
         # Notify when quota resets after being nearly exhausted, but only if no other quota is blocking usage.
@@ -619,7 +619,6 @@ class ProviderMonitor:
             prev = self._prev_utilization.get(key)
             if prev is not None and pct < prev:
                 self._run_reset_command(key, pct, prev, data=result.data, entry=result.data.get(key, {}))
-                self._idle_reset_pending = False
 
         self._check_threshold_alerts(result.data)
 
@@ -693,7 +692,7 @@ class ProviderMonitor:
         for variant_key, entry in data.items():
             if variant_key == 'extra_usage':
                 continue
-            if not isinstance(entry, dict) or entry.get('utilization') is None:
+            if not is_active_quota(variant_key, entry):
                 continue
 
             pct = entry['utilization']
@@ -813,7 +812,7 @@ class ProviderMonitor:
         """
         env_vars: dict[str, str] = {}
         for key, entry in data.items():
-            if key == 'extra_usage' or not isinstance(entry, dict) or 'utilization' not in entry:
+            if key == 'extra_usage' or not is_active_quota(key, entry):
                 continue
             env_vars[f'USAGE_MONITOR_UTILIZATION_{key.upper()}'] = str(round(entry.get('utilization', 0) or 0))
             env_vars[f'USAGE_MONITOR_RESETS_AT_{key.upper()}'] = entry.get('resets_at') or ''
@@ -888,7 +887,7 @@ class ProviderMonitor:
             'USAGE_MONITOR_PREV_UTILIZATION': str(round(prev_pct)),
             'USAGE_MONITOR_UTILIZATION_FIVE_HOUR': str(round(pct_5h)),
             'USAGE_MONITOR_UTILIZATION_SEVEN_DAY': str(round(pct_7d)),
-            'USAGE_MONITOR_RESETS_AT': entry.get('resets_at', ''),
+            'USAGE_MONITOR_RESETS_AT': entry.get('resets_at') or '',
             'USAGE_MONITOR_TITLE': self._notification_text('notify_reset_title'),
             'USAGE_MONITOR_MESSAGE': self._notification_text('notify_reset_provider'),
         })
@@ -921,7 +920,7 @@ class ProviderMonitor:
             env_vars['USAGE_MONITOR_UTILIZATION'] = str(round(pct))
         env_vars.update({
             'USAGE_MONITOR_THRESHOLD': str(round(threshold)),
-            'USAGE_MONITOR_RESETS_AT': entry.get('resets_at', ''),
+            'USAGE_MONITOR_RESETS_AT': entry.get('resets_at') or '',
             'USAGE_MONITOR_TITLE': title,
             'USAGE_MONITOR_MESSAGE': message,
         })
@@ -934,22 +933,28 @@ class ProviderMonitor:
 
     # Polling
 
-    def _seconds_until_next_reset(self) -> float | None:
-        """Return seconds until the earliest upcoming quota reset, or None."""
+    def _reset_offsets(self) -> list[float]:
+        """Return seconds until each known reset, including overdue resets."""
         now = datetime.now(timezone.utc)
-        earliest = None
-        for key, entry in self._last_response.items():
+        offsets = []
+        for entry in self._last_response.values():
             if not isinstance(entry, dict) or not entry.get('resets_at'):
                 continue
             try:
                 reset_time = datetime.fromisoformat(entry['resets_at'])
-                seconds = (reset_time - now).total_seconds()
-                if seconds > 0 and (earliest is None or seconds < earliest):
-                    earliest = seconds
+                offsets.append((reset_time - now).total_seconds())
             except Exception:
                 continue
+        return offsets
 
-        return earliest
+    def _seconds_until_next_reset(self) -> float | None:
+        """Return seconds until the earliest upcoming quota reset, or None."""
+        upcoming = [seconds for seconds in self._reset_offsets() if seconds > 0]
+        return min(upcoming) if upcoming else None
+
+    def _reset_overdue(self) -> bool:
+        """Return whether the last provider response still names a past reset."""
+        return any(seconds <= 0 for seconds in self._reset_offsets())
 
     def _account_switched(self) -> bool:
         """Return whether the current credentials belong to a different account.
@@ -987,6 +992,30 @@ class ProviderMonitor:
 
         return target
 
+    def _safe_poll_target(self, target: float) -> float:
+        """Keep a proposed target from delaying a reset-confirming poll."""
+        next_reset = self._seconds_until_next_reset()
+        if next_reset is None:
+            return target
+        reset_epoch = time.time() + next_reset
+        aligned = self._reset_aligned_poll_target(next_reset)
+        danger = self.settings.poll_fast - RESET_BUFFER
+        if target > aligned or reset_epoch - danger < target < reset_epoch:
+            return aligned
+        return target
+
+    def _base_poll_interval(self) -> int:
+        """Return the cadence set by the current provider response."""
+        data = self._last_response
+        if data.get('rate_limited'):
+            remaining = self.cache.rate_limit_remaining
+            return max(math.ceil(remaining), self.settings.poll_interval) if remaining > 0 else self.settings.poll_interval
+        if 'error' in data:
+            return self.settings.poll_error
+        if self._fast_polls_remaining > 0:
+            return self.settings.poll_fast
+        return self.settings.poll_interval
+
     def _calculate_poll_interval(self) -> int:
         """Determine the next poll interval based on current state.
 
@@ -995,17 +1024,9 @@ class ProviderMonitor:
         int
             Seconds to wait before the next poll.
         """
-        data = self._last_response
-
-        if data.get('rate_limited'):
-            remaining = self.cache.rate_limit_remaining
-            interval = max(math.ceil(remaining), self.settings.poll_interval) if remaining > 0 else self.settings.poll_interval
-        elif 'error' in data:
-            interval = self.settings.poll_error
-        elif self._fast_polls_remaining > 0:
-            interval = self.settings.poll_fast
-        else:
-            interval = self.settings.poll_interval
+        interval = self._base_poll_interval()
+        if self._polling_throttled() and not self._reset_overdue():
+            interval = max(interval, self.settings.idle_interval)
 
         # Align the next poll around an imminent reset for faster feedback.
         # The confirming poll is placed just after the reset; a follow-up uses
@@ -1023,27 +1044,17 @@ class ProviderMonitor:
             return True
         return self.settings.idle_pause > 0 and get_idle_seconds() >= self.settings.idle_pause
 
-    def _wait_for_activity(self, until: float | None = None) -> None:
-        """Block until user activity resumes or the app is stopping.
-
-        Parameters
-        ----------
-        until : float | None
-            Optional deadline (``time.time()`` epoch).  When set, the
-            wait ends even if the user is still away, allowing a
-            time-critical poll (e.g. quota reset command) to proceed.
-        """
-        while self.running and self._is_user_away():
-            if until is not None and time.time() >= until:
-                break
-            time.sleep(2)
+    def _polling_throttled(self) -> bool:
+        """Reduce polling while away unless the popup is visible on screen."""
+        if self._popup_open and not (is_workstation_locked() or is_screensaver_running()):
+            return False
+        return self._is_user_away()
 
     def poll_loop(self) -> None:
         """Poll this provider in a loop with adaptive intervals.
 
-        Pauses polling when the user is idle or the workstation is
-        locked.  On resume, polls immediately if the regular interval
-        has elapsed since the last successful fetch.
+        Polls less often while away, but continues to detect resets and
+        account switches. Returning to an uncovered popup restores cadence.
         """
         revision_seen = self.provider.auth_revision()
         self.cache.ensure_profile()
@@ -1070,6 +1081,7 @@ class ProviderMonitor:
             target = time.time() + interval
             self._next_poll_time = target
             last_success_seen = self.cache.last_success_time
+            throttled_seen = self._polling_throttled()
             while self.running and time.time() < target:
                 time.sleep(1)
 
@@ -1104,20 +1116,7 @@ class ProviderMonitor:
                 lst = self.cache.last_success_time
                 if lst is not None and (last_success_seen is None or lst > last_success_seen):
                     last_success_seen = lst
-                    new_target = max(target, lst + interval)
-                    # Never let that push move the poll past a reset-aligned
-                    # slot, nor drop it into the danger window (the last
-                    # POLL_FAST - RESET_BUFFER seconds before the reset): a
-                    # poll there consumes the cooldown, so the confirming poll
-                    # would overshoot the reset by up to a full cooldown.
-                    next_reset = self._seconds_until_next_reset()
-                    if next_reset is not None:
-                        reset_epoch = time.time() + next_reset
-                        aligned = self._reset_aligned_poll_target(next_reset)
-                        danger = self.settings.poll_fast - RESET_BUFFER
-                        if new_target > aligned or reset_epoch - danger < new_target < reset_epoch:
-                            new_target = aligned
-                    target = new_target
+                    target = self._safe_poll_target(max(target, lst + interval))
                     self._next_poll_time = target
 
                 # Show notifications deferred while the user was away as soon
@@ -1127,56 +1126,16 @@ class ProviderMonitor:
                 if self._deferred_notifications and not self._is_user_away():
                     self._flush_deferred_notifications()
 
-                # Pause polling while the user is away.
-                # Regular polling stops entirely during idle/lock.
-                # The only exception: when on_reset_command is configured
-                # and a quota reset is due, the idle pause is interrupted
-                # so the command fires on time.  The flag
-                # _idle_reset_pending keeps polling at POLL_INTERVAL
-                # until the reset is actually confirmed (usage drop) -
-                # this covers server-side delays and transient network
-                # errors.  The flag is cleared when update() detects the
-                # drop, or when the user returns (they'll see it anyway).
-                if self._is_user_away():
-                    reset_deadline = None
-                    if self.settings.on_reset_command:
-                        next_reset = self._seconds_until_next_reset()
-                        if next_reset is not None:
-                            reset_deadline = time.time() + next_reset + RESET_BUFFER
-                            self._idle_reset_pending = True
-                        elif self._idle_reset_pending:
-                            reset_deadline = time.time() + self.settings.poll_interval
-
-                    self._wait_for_activity(until=reset_deadline)
-
-                    if reset_deadline is not None and self._is_user_away():
-                        # Woke up for a reset while still idle - poll once
-                        break
-
-                    # User returned - show any notifications deferred
-                    # during idle and poll immediately if interval elapsed.
-                    # _idle_reset_pending is intentionally kept: if the
-                    # user locks again before a successful poll confirms
-                    # the reset (e.g. network was down), idle polling
-                    # must resume.  The flag is only cleared by update()
-                    # when a usage drop is actually detected.
-                    self._flush_deferred_notifications()
+                # Pull a throttled target forward when the user returns or
+                # opens the popup, without consuming the pre-reset cooldown.
+                throttled_now = self._polling_throttled()
+                if throttled_seen and not throttled_now:
+                    interval = self._calculate_poll_interval()
                     lst = self.cache.last_success_time
-                    if lst is None:
-                        continue
-
-                    next_reset = self._seconds_until_next_reset()
-                    if next_reset is not None and next_reset < self.settings.poll_fast:
-                        # Returned within the cooldown window before a reset:
-                        # polling now would advance last_success into that window
-                        # and force the confirming poll to overshoot.  Realign the
-                        # wait to just after the reset and keep waiting for it.
-                        target = self._reset_aligned_poll_target(next_reset)
-                        self._next_poll_time = target
-                        continue
-
-                    if time.time() - lst >= interval:
-                        break
+                    resumed = time.time() if lst is None else lst + interval
+                    target = min(target, self._safe_poll_target(resumed))
+                    self._next_poll_time = target
+                throttled_seen = throttled_now
 
     # Lifecycle
 
@@ -1187,7 +1146,8 @@ class ProviderMonitor:
             if getattr(sys, 'frozen', False):
                 sync_autostart_path()
             if not self.provider.has_authentication():
-                icon.notify(f"{T['warn_no_token']}\n{T['warn_login']}", T['popup_title'])
+                message = getattr(self.provider, 'no_auth_message', f"{T['warn_no_token']}\n{T['warn_login']}")
+                icon.notify(message, f'{self.provider.display_name} Usage')
             threading.Thread(target=watch_theme_change, args=(self._on_theme_changed,), daemon=True).start()
             self.poll_loop()
         except Exception:

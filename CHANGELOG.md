@@ -6,6 +6,19 @@ This is a fresh combined product derived from [Usage Monitor for Claude](https:/
 
 ## [Unreleased]
 
+## [1.0.2] - 2026-09-27
+
+### Changed
+
+- Each provider continues polling at a slower cadence while Windows is idle or locked, with reset alignment and normal polling while an uncovered popup is open.
+- Claude HTTPS now verifies certificates through the Windows certificate store, and Claude authentication messages name the CLI login command.
+- Announced but inactive code-named quota fields are hidden until they gain a reset window; inactive model-scoped account limits remain visible.
+
+### Fixed
+
+- Reset and threshold event commands receive an empty reset timestamp when the provider reports null.
+- Verbose output respects redirected stdout and stderr and redacts home paths reached through a junction or symlink.
+
 ## [1.0.1] - 2026-09-27
 
 ### Changed

@@ -1,5 +1,6 @@
 pystray==0.19.5
 Pillow==12.3.0
 requests==2.34.2
+truststore==0.10.4
 pywebview==6.2.1
 pyinstaller==6.21.0

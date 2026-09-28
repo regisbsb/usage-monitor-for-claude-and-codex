@@ -107,7 +107,8 @@ Each provider accepts its own polling values:
 | `poll_fast_extra` | `2` | Extra fast polls after usage stops increasing |
 | `poll_error` | `30` | Cadence after a transient provider error |
 | `max_backoff` | `900` | Maximum retained provider backoff where applicable |
-| `idle_pause` | `300` | Seconds before ordinary polling pauses; `0` disables idle pause |
+| `idle_pause` | `300` | Seconds before idle polling slows; `0` disables idle detection |
+| `idle_interval` | `900` | Minimum seconds between scheduled polls while idle or locked; an uncovered open popup keeps the normal cadence |
 
 `poll_fast` must not exceed `poll_interval`. Successful scheduled fetches respect that provider's `poll_fast` spacing. An explicit user click on **Refresh now** in a provider popup or tray menu is the narrow exception: it requests an immediate fetch only for that provider, using the same provider-specific authentication and transport path.
 
@@ -120,6 +121,8 @@ Provider responses are normalized into dynamic top-level quota fields. Common ex
 Field labels, periods, and ordering derive from the normalized name. Duration-less Codex windows use a stable fallback name and remain displayable but have no elapsed-time marker or dividers.
 
 Do not copy a field name from one provider into the other provider's configuration unless that provider actually reports it. Missing configured fields are skipped or substituted according to the display resolver without creating fake quota rows.
+
+An announced code-named field with no reset window is hidden until it becomes active. A duration-named quota or a model-scoped limit supplied through Claude account limits remains visible at 0% before its first active window. Active fields whose names cannot be parsed still display without time markers or dividers.
 
 ## Display fields
 

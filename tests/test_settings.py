@@ -526,6 +526,14 @@ class TestSettingsValidation(unittest.TestCase):
         self.assertNotIn('idle_pause', result)
         mock.windll.user32.MessageBoxW.assert_called_once()
 
+    def test_idle_interval_requires_positive_integer(self):
+        valid, _ = self._run_validate({'idle_interval': 900})
+        zero, _ = self._run_validate({'idle_interval': 0})
+        boolean, _ = self._run_validate({'idle_interval': True})
+        self.assertEqual(valid['idle_interval'], 900)
+        self.assertNotIn('idle_interval', zero)
+        self.assertNotIn('idle_interval', boolean)
+
     # Threshold array validation
 
     def test_valid_threshold_array(self):

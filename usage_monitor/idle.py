@@ -13,7 +13,7 @@ from __future__ import annotations
 import ctypes
 import ctypes.wintypes
 
-__all__ = ['get_idle_seconds', 'is_workstation_locked']
+__all__ = ['get_idle_seconds', 'is_screensaver_running', 'is_workstation_locked']
 
 # Ensure GetTickCount returns unsigned DWORD (default c_int overflows after ~24.8 days of uptime)
 ctypes.windll.kernel32.GetTickCount.restype = ctypes.wintypes.DWORD
@@ -60,3 +60,11 @@ def is_workstation_locked() -> bool:
         ctypes.windll.user32.CloseDesktop(hdesk)
         return False
     return True
+
+
+def is_screensaver_running() -> bool:
+    """Return whether a screensaver covers the desktop, including one without a lock."""
+    running = ctypes.wintypes.BOOL()
+    if not ctypes.windll.user32.SystemParametersInfoW(0x0072, 0, ctypes.byref(running), 0):
+        return False
+    return bool(running.value)

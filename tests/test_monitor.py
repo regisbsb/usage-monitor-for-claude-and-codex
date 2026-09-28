@@ -22,6 +22,8 @@ def _make_monitor(provider_id: str = 'claude') -> ProviderMonitor:
     provider.icon_name = f'usage-monitor-{provider_id}'
     provider.display_name = provider_id.title()
     provider.cli_display_name = 'Claude Code' if provider_id == 'claude' else 'Codex'
+    provider.auth_error_label = 'Codex Session Expired' if provider_id == 'codex' else None
+    provider.auth_error_short = 'Run codex login to sign in again.' if provider_id == 'codex' else None
     provider.project_url = 'https://example.invalid'
     provider.custom_config = False
     provider.create_cache.return_value = MagicMock()

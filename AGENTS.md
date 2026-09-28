@@ -23,7 +23,7 @@ This file is the authoritative repository guidance for Usage Monitor for Claude 
 - Provider identifiers are fixed literals: `claude` and `codex`.
 - A provider fetch returns normalized usage plus profile state as one provider cycle. Profile semantics are three-valued: a profile dictionary replaces cached state, `{}` is authoritative signed-out state, and `None` preserves the prior profile.
 - Quota entries are top-level dictionaries with `utilization` and `resets_at`; optional display metadata may be added without changing those keys. Null windows are skipped and a missing reset is `''`.
-- Never hardcode a closed quota-field list in display, alert, reset, event-variable, or sorting code. Parse duration-derived fields generically and leave unparseable fields displayable without time markers or dividers.
+- Never hardcode a closed quota-field list in display, alert, reset, event-variable, or sorting code. Parse duration-derived fields generically. Leave unparseable fields displayable without time markers or dividers when they have an active reset window or come from account limits; hide announced code-named fields with no active window.
 - Credits and extra-usage data are active only where the provider explicitly normalizes them. Do not infer Codex credits support from raw app-server metadata.
 
 ## Claude security boundary

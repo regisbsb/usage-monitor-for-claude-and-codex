@@ -14,6 +14,8 @@ The Claude provider reads `.credentials.json` from the selected Claude configura
 
 It extracts the Claude OAuth token and sends it only in the HTTP `Authorization` header to fixed HTTPS endpoints on `api.anthropic.com` for usage and profile reads. It does not send the token to Codex, the project authors, event commands, the popup, or the application log.
 
+Claude HTTPS certificate validation uses the Windows certificate store, including root certificates installed by an organization. A failed certificate check appears as a distinct Claude connection error. The Codex provider continues to delegate its network and authentication to the local app-server child.
+
 After a Claude authentication failure, the provider may invoke the installed native `claude update` command. That external Claude Code process may access the network and update the selected Claude credentials. The app then re-reads the same selected credentials file and may retry the failed provider request.
 
 ## Codex provider

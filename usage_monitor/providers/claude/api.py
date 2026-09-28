@@ -13,11 +13,17 @@ from pathlib import Path
 from typing import Any
 
 import requests
+import truststore
+
+from ...i18n import T
 
 API_URL_USAGE = "https://api.anthropic.com/api/oauth/usage"
 API_URL_PROFILE = "https://api.anthropic.com/api/oauth/profile"
 _FALLBACK_USER_AGENT = "claude-code/2.1.204"
 _UNSET = object()
+
+# Claude is the only built-in HTTPS client; use roots trusted by Windows.
+truststore.inject_into_ssl()
 
 __all__ = [
     "API_URL_PROFILE",
@@ -71,13 +77,15 @@ class ClaudeAPI:
         """Fetch normalized quota data with a caller-pinned token."""
         headers = self.api_headers(token)
         if headers is None:
-            return {"error": "No OAuth token. Log in to Claude Code first."}
+            return {"error": T['no_token']}
 
         try:
             response = self._get(API_URL_USAGE, headers)
             return merge_scoped_limits(response.json())
+        except requests.exceptions.SSLError:
+            return {"error": T['certificate_error']}
         except requests.ConnectionError:
-            return {"error": "Could not connect to Anthropic API."}
+            return {"error": T['connection_error']}
         except requests.HTTPError as error:
             response = error.response
             code = response.status_code if response is not None else 0
@@ -88,7 +96,7 @@ class ClaudeAPI:
             if code == 401:
                 return {
                     **extra,
-                    "error": "Session expired - please open Claude Code to log in again.",
+                    "error": T['auth_expired'],
                     "auth_error": True,
                 }
             if code == 429:
@@ -173,6 +181,7 @@ def merge_scoped_limits(data: dict[str, Any]) -> dict[str, Any]:
             merged[field] = {
                 "utilization": float(limit.get("percent") or 0),
                 "resets_at": limit.get("resets_at"),
+                "from_account_limits": True,
             }
     return merged
 

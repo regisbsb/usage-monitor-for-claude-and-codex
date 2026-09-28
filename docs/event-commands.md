@@ -118,11 +118,13 @@ USAGE_MONITOR_RESETS_AT_<FIELD>
 
 The field name is uppercased. For example, `seven_day_gpt_5_pro` becomes `USAGE_MONITOR_UTILIZATION_SEVEN_DAY_GPT_5_PRO`. A missing reset is an empty string. Duration-less Codex windows still emit variables.
 
+An announced code-named quota with no active reset window is omitted from event variables, matching the popup and tray. A duration-named quota or a marked Claude account limit remains available before its first window.
+
 Double-click before a provider's first successful update supplies only common variables. Startup commands wait for that provider's first successful update; the other provider's success does not trigger them.
 
 ## Idle and notification behavior
 
-Ordinary polling pauses while Windows is idle or locked. When a provider has `on_reset_command` configured, its reset-aligned poll can wake at the expected reset time so that provider can confirm the reset. The other provider remains independent.
+Each provider keeps polling at a reduced cadence while Windows is idle or locked. Reset alignment still confirms a reset promptly, including when no reset command is configured. An uncovered open popup keeps the normal cadence. The other provider remains independent.
 
 Desktop notifications are deferred while the user is away. Event commands themselves are not deferred.
 

@@ -91,5 +91,21 @@ class TestIsWorkstationLocked(unittest.TestCase):
         mock_windll.user32.CloseDesktop.assert_called_once_with(42)
 
 
+class TestScreensaverRunning(unittest.TestCase):
+    """A visible screensaver throttles an otherwise visible popup."""
+
+    @patch.object(idle_mod.ctypes, 'windll', create=True)
+    def test_running_and_failed_queries(self, mock_windll):
+        def set_running(_action, _param, output, _flags):
+            output._obj.value = 1
+            return 1
+
+        mock_windll.user32.SystemParametersInfoW.side_effect = set_running
+        self.assertTrue(idle_mod.is_screensaver_running())
+        mock_windll.user32.SystemParametersInfoW.side_effect = None
+        mock_windll.user32.SystemParametersInfoW.return_value = 0
+        self.assertFalse(idle_mod.is_screensaver_running())
+
+
 if __name__ == '__main__':
     unittest.main()

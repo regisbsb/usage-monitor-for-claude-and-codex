@@ -17,7 +17,7 @@ from .settings import CURRENCY_SYMBOL, TIME_FORMAT, TOOLTIP_FIELDS, WEEKLY_BAR_P
 
 __all__ = [
     'divider_positions', 'elapsed_pct', 'expand_popup_fields', 'field_period', 'format_credits',
-    'format_tooltip', 'parse_field_name', 'popup_label', 'resolve_display_fields', 'time_until', 'tooltip_label',
+    'format_tooltip', 'is_active_quota', 'parse_field_name', 'popup_label', 'resolve_display_fields', 'time_until', 'tooltip_label',
 ]
 
 PERIOD_5H = 5 * 3600
@@ -160,6 +160,13 @@ def field_period(field: str) -> int | None:
     return None
 
 
+def is_active_quota(field: str, entry: Any) -> bool:
+    """Accept quotas with a reset, a readable duration, or an account-limit origin."""
+    if not isinstance(entry, dict) or entry.get('utilization') is None:
+        return False
+    return bool(entry.get('resets_at')) or parse_field_name(field) is not None or bool(entry.get('from_account_limits'))
+
+
 def _field_sort_key(field: str) -> tuple[int, int, int, str]:
     """Sort shorter periods first, base before variants, and unparseable fields last."""
     period = field_period(field)
@@ -189,8 +196,7 @@ def expand_popup_fields(popup_fields: list[str], usage_data: dict[str, Any]) -> 
     """
     available = {
         key for key, value in usage_data.items()
-        if isinstance(value, dict) and 'utilization' in value and 'resets_at' in value
-        and value.get('utilization') is not None
+        if isinstance(value, dict) and 'resets_at' in value and is_active_quota(key, value)
     }
 
     result: list[str] = []
@@ -218,7 +224,7 @@ def resolve_display_fields(configured: list[str], data: dict[str, Any], count: i
     for key, value in data.items():
         if key == 'extra_usage' or not isinstance(value, dict):
             continue
-        if 'utilization' in value and 'resets_at' in value and value.get('utilization') is not None:
+        if 'resets_at' in value and is_active_quota(key, value):
             detected.append(key)
     detected.sort(key=_field_sort_key)
 
@@ -462,11 +468,14 @@ def format_credits(minor_units: float, currency: str | None = None, decimal_plac
         return f'{amount:.{places}f}'
 
 
-def format_tooltip(data: dict[str, Any], fields: list[str] | None = None, title: str | None = None) -> str:
+def format_tooltip(
+    data: dict[str, Any], fields: list[str] | None = None, title: str | None = None,
+    auth_label: str | None = None, auth_short: str | None = None,
+) -> str:
     """Format usage data as short tooltip text."""
     if 'error' in data:
         if data.get('auth_error'):
-            return f"{T['auth_expired_label']}\n{T['auth_expired_short']}"
+            return f"{auth_label or T['auth_expired_label']}\n{auth_short or T['auth_expired_short']}"
         error = data['error']
         server_msg = data.get('server_message')
         if server_msg:
@@ -485,7 +494,7 @@ def format_tooltip(data: dict[str, Any], fields: list[str] | None = None, title:
             continue
         key = resolved.split(':', 1)[0]
         entry = data.get(key)
-        if isinstance(entry, dict) and entry.get('utilization') is not None:
+        if isinstance(entry, dict) and is_active_quota(key, entry):
             short = tooltip_label(key, entry.get('limit_name'))
             pct = f"{entry['utilization']:.0f}%"
             reset = time_until(entry.get('resets_at', ''))

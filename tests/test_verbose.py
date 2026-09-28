@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import io
 import unittest
+from pathlib import Path
+from tempfile import TemporaryDirectory
 from unittest.mock import MagicMock, patch
 
 from usage_monitor.verbose import (
@@ -304,40 +306,27 @@ class TestCredentialsStatus(unittest.TestCase):
 
     def test_found(self):
         """Reports 'found' with path when credentials file exists."""
-        with patch('usage_monitor.verbose.Path') as mock_path, \
-             patch.dict('os.environ', {}, clear=False):
-            env = {k: v for k, v in __import__('os').environ.items() if k != 'CLAUDE_CONFIG_DIR'}
-            with patch.dict('os.environ', env, clear=True):
-                mock_home = MagicMock()
-                mock_path.home.return_value = mock_home
-                cred_path = mock_home / '.claude' / '.credentials.json'
-                cred_path.exists.return_value = True
+        with TemporaryDirectory() as tmp:
+            config = Path(tmp)
+            (config / '.credentials.json').touch()
+            with patch('usage_monitor.verbose.effective_config_dir', return_value=config):
                 result = _credentials_status()
         self.assertTrue(result.startswith('found'))
 
     def test_not_found(self):
         """Reports 'NOT FOUND' with path when credentials file is missing."""
-        with patch('usage_monitor.verbose.Path') as mock_path, \
-             patch.dict('os.environ', {}, clear=False):
-            env = {k: v for k, v in __import__('os').environ.items() if k != 'CLAUDE_CONFIG_DIR'}
-            with patch.dict('os.environ', env, clear=True):
-                mock_home = MagicMock()
-                mock_path.home.return_value = mock_home
-                cred_path = mock_home / '.claude' / '.credentials.json'
-                cred_path.exists.return_value = False
+        with TemporaryDirectory() as tmp:
+            with patch('usage_monitor.verbose.effective_config_dir', return_value=Path(tmp)):
                 result = _credentials_status()
         self.assertTrue(result.startswith('NOT FOUND'))
 
     def test_custom_config_dir(self):
         """Respects CLAUDE_CONFIG_DIR environment variable."""
-        with patch('usage_monitor.verbose.Path') as mock_path, \
-             patch.dict('os.environ', {'CLAUDE_CONFIG_DIR': 'D:\\custom'}):
-            custom_path = MagicMock()
-            mock_path.return_value = custom_path
-            cred_path = custom_path / '.credentials.json'
-            cred_path.exists.return_value = True
-            result = _credentials_status()
-        mock_path.assert_called_with('D:\\custom')
+        with TemporaryDirectory() as tmp:
+            config = Path(tmp)
+            (config / '.credentials.json').touch()
+            with patch('usage_monitor.verbose.effective_config_dir', return_value=config):
+                result = _credentials_status()
         self.assertTrue(result.startswith('found'))
 
 

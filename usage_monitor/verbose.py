@@ -12,13 +12,24 @@ import ctypes
 import ctypes.wintypes
 import importlib.metadata
 import locale
+import msvcrt
 import os
 import platform
 import sys
 import winreg
 from pathlib import Path
+from typing import TextIO
+
+from .instance_id import effective_config_dir
 
 __all__ = ['setup_console', 'print_startup_diagnostics', 'print_runtime_diagnostics']
+
+_STD_OUTPUT_HANDLE = -11
+_STD_ERROR_HANDLE = -12
+_FILE_TYPE_DISK = 0x0001
+_FILE_TYPE_PIPE = 0x0003
+_INVALID_HANDLE = ctypes.c_void_p(-1).value
+ctypes.windll.kernel32.GetStdHandle.restype = ctypes.wintypes.HANDLE
 
 # WebView2 registry GUIDs (runtime, beta, dev, canary)
 _WEBVIEW2_GUIDS = [
@@ -30,16 +41,43 @@ _WEBVIEW2_GUIDS = [
 
 
 def setup_console() -> None:
-    """Attach to the parent console or allocate a new one and redirect stdout/stderr."""
+    """Preserve redirected stdout/stderr; attach a console for other streams."""
     ATTACH_PARENT_PROCESS = -1
 
-    if not ctypes.windll.kernel32.AttachConsole(ATTACH_PARENT_PROCESS):
-        ctypes.windll.kernel32.AllocConsole()
+    stdout_handle = _redirected_handle(_STD_OUTPUT_HANDLE)
+    stderr_handle = _redirected_handle(_STD_ERROR_HANDLE)
+    stdout_stream = _stream_from_handle(stdout_handle)
+    stderr_stream = stdout_stream if stderr_handle == stdout_handle else _stream_from_handle(stderr_handle)
 
-    sys.stdout = open('CONOUT$', 'w', encoding='utf-8')  # noqa: SIM115
-    sys.stderr = open('CONOUT$', 'w', encoding='utf-8')  # noqa: SIM115
+    if stdout_stream is None or stderr_stream is None:
+        if not ctypes.windll.kernel32.AttachConsole(ATTACH_PARENT_PROCESS):
+            ctypes.windll.kernel32.AllocConsole()
+
+    sys.stdout = stdout_stream if stdout_stream is not None else open('CONOUT$', 'w', encoding='utf-8')  # noqa: SIM115
+    sys.stderr = stderr_stream if stderr_stream is not None else open('CONOUT$', 'w', encoding='utf-8')  # noqa: SIM115
 
     os.environ['PYWEBVIEW_LOG'] = 'DEBUG'
+
+
+def _redirected_handle(std_handle: int) -> int | None:
+    """Return a disk or pipe standard handle, if one exists."""
+    handle = ctypes.windll.kernel32.GetStdHandle(std_handle)
+    if not handle or handle == _INVALID_HANDLE:
+        return None
+    if ctypes.windll.kernel32.GetFileType(handle) not in (_FILE_TYPE_DISK, _FILE_TYPE_PIPE):
+        return None
+    return handle
+
+
+def _stream_from_handle(handle: int | None) -> TextIO | None:
+    """Wrap a redirected standard handle as a line-buffered text stream."""
+    if handle is None:
+        return None
+    try:
+        descriptor = msvcrt.open_osfhandle(handle, os.O_WRONLY)
+        return open(descriptor, 'w', encoding='utf-8', buffering=1)  # noqa: SIM115
+    except OSError:
+        return None
 
 
 def _section(title: str) -> None:
@@ -149,6 +187,15 @@ def _screen_info() -> tuple[str, str, str]:
     return monitor_count, primary, work_area
 
 
+def _home_spellings() -> tuple[str, ...]:
+    """Return the home directory as written and resolved, when possible."""
+    home_dir = Path.home()
+    try:
+        return (str(home_dir), str(home_dir.resolve()))
+    except (OSError, RuntimeError):
+        return (str(home_dir),)
+
+
 def _redact_home(path_str: str) -> str:
     """Replace the user's home directory with ``~`` to avoid exposing the username.
 
@@ -157,22 +204,20 @@ def _redact_home(path_str: str) -> str:
     boundary-aware, so a sibling profile whose name merely starts with the
     username is not partially redacted.
     """
-    home = str(Path.home())
     normalized_path = os.path.normcase(path_str)
-    normalized_home = os.path.normcase(home)
-
-    if normalized_path == normalized_home:
-        return '~'
-    if normalized_path.startswith(normalized_home + os.sep):
-        return '~' + path_str[len(home):]
+    for home in _home_spellings():
+        normalized_home = os.path.normcase(home)
+        if normalized_path == normalized_home:
+            return '~'
+        if normalized_path.startswith(normalized_home + os.sep):
+            return '~' + path_str[len(home):]
 
     return path_str
 
 
 def _credentials_status() -> str:
     """Check if the credentials file exists (never reads its content)."""
-    config_dir = Path(os.environ.get('CLAUDE_CONFIG_DIR', '')) if os.environ.get('CLAUDE_CONFIG_DIR') else Path.home() / '.claude'
-    cred_path = config_dir / '.credentials.json'
+    cred_path = effective_config_dir() / '.credentials.json'
     display_path = _redact_home(str(cred_path))
 
     if cred_path.exists():

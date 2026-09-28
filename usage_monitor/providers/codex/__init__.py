@@ -25,6 +25,8 @@ class CodexProvider:
     auth_error_glyph = '>!'
     zero_state_glyph = '>_'
     no_auth_message = 'Codex is signed out. Run codex login, then wait for the next refresh.'
+    auth_error_label = 'Codex Session Expired'
+    auth_error_short = 'Run codex login to sign in again.'
     project_url = PROJECT_URL
     changelog_url = CHANGELOG_URL
 

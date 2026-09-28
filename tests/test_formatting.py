@@ -728,7 +728,14 @@ class TestFormatTooltip(unittest.TestCase):
     def test_auth_error(self):
         data = {'error': 'Unauthorized', 'auth_error': True}
         result = format_tooltip(data)
-        self.assertEqual(result, 'Claude Session Expired\nPlease open Claude Code to refresh your session.')
+        self.assertEqual(result, 'Claude Code CLI Session Expired\nSign in again with: claude auth login')
+
+    def test_codex_auth_error_uses_provider_copy(self):
+        result = format_tooltip(
+            {'error': 'Codex authentication expired.', 'auth_error': True},
+            auth_label='Codex Session Expired', auth_short='Run codex login to sign in again.',
+        )
+        self.assertEqual(result, 'Codex Session Expired\nRun codex login to sign in again.')
 
     def test_error_with_server_message(self):
         data = {'error': 'API request failed (HTTP 429).', 'server_message': 'Rate limited.'}
