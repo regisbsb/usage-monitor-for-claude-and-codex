@@ -25,6 +25,7 @@ from .settings import ProviderSettings
 from .formatting import elapsed_pct, field_period, format_credits, format_tooltip, is_active_quota, parse_field_name, popup_label, resolve_display_fields
 from .i18n import T
 from .popup import UsagePopup
+from .notification_identity import show_notification
 from .tray_icon import create_icon_image, create_status_image, taskbar_uses_light_theme, watch_theme_change
 
 __all__ = ['ProviderMonitor', 'crash_log']
@@ -526,7 +527,7 @@ class ProviderMonitor:
         if result.data.get('no_auth'):
             if not self._no_auth_notified:
                 message = getattr(self.provider, 'no_auth_message', T['warn_login'])
-                self.icon.notify(message, f'{self.provider.display_name} Usage')
+                self._notify(message, f'{self.provider.display_name} Usage')
                 self._no_auth_notified = True
         else:
             self._no_auth_notified = False
@@ -534,7 +535,7 @@ class ProviderMonitor:
         # Handle CLI update notification from token refresh
         token_refresh = getattr(result, 'token_refresh', None)
         if self.settings.notify_update and token_refresh and token_refresh.updated:
-            self.icon.notify(
+            self._notify(
                 self._notification_text('notify_update_provider', old=token_refresh.old_version, new=token_refresh.new_version),
                 self._notification_text('notify_update_provider_title'),
             )
@@ -647,6 +648,11 @@ class ProviderMonitor:
         values.setdefault('cli', getattr(self.provider, 'cli_display_name', self.provider.display_name))
         return T[key].format(**values)
 
+    def _notify(self, message: str, title: str) -> None:
+        """Deliver a provider notification under the combined product identity."""
+        registered = self.supervisor.notification_identity_registered is True
+        show_notification(self.icon, message, title, registered)
+
     def _notify_or_defer(self, category: str, message: str, title: str) -> None:
         """Show a notification immediately, or defer it if the user is away.
 
@@ -665,7 +671,7 @@ class ProviderMonitor:
             with self._notify_lock:
                 self._deferred_notifications[category] = (message, title)
         else:
-            self.icon.notify(message, title)
+            self._notify(message, title)
 
     def _flush_deferred_notifications(self) -> None:
         """Show all deferred notifications and clear the queue.
@@ -677,7 +683,7 @@ class ProviderMonitor:
         with self._notify_lock:
             pending, self._deferred_notifications = self._deferred_notifications, {}
         for message, title in pending.values():
-            self.icon.notify(message, title)
+            self._notify(message, title)
 
     def _check_threshold_alerts(self, data: dict[str, Any]) -> None:
         """Show a notification when usage crosses a configured threshold.
@@ -1062,7 +1068,7 @@ class ProviderMonitor:
         while self.running:
             maintenance = self.provider.run_maintenance()
             if maintenance and self.settings.notify_update and getattr(maintenance, 'updated', False):
-                self.icon.notify(
+                self._notify(
                     self._notification_text('notify_update_provider', old=maintenance.old_version, new=maintenance.new_version),
                     self._notification_text('notify_update_provider_title'),
                 )
@@ -1147,7 +1153,7 @@ class ProviderMonitor:
                 sync_autostart_path()
             if not self.provider.has_authentication():
                 message = getattr(self.provider, 'no_auth_message', f"{T['warn_no_token']}\n{T['warn_login']}")
-                icon.notify(message, f'{self.provider.display_name} Usage')
+                self._notify(message, f'{self.provider.display_name} Usage')
             threading.Thread(target=watch_theme_change, args=(self._on_theme_changed,), daemon=True).start()
             self.poll_loop()
         except Exception:

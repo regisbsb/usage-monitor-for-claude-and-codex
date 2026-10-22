@@ -25,7 +25,8 @@ log = logging.getLogger(__name__)
 class AppSupervisor:
     """Own every tray icon and guarantee process-wide quit and restart."""
 
-    def __init__(self, providers: Iterable[tuple[Provider, ProviderSettings]]) -> None:
+    def __init__(self, providers: Iterable[tuple[Provider, ProviderSettings]], notification_identity_registered: bool = False) -> None:
+        self.notification_identity_registered = notification_identity_registered
         provider_pairs = list(providers)
         self._stop_event = threading.Event()
         self._lifecycle_lock = threading.Lock()

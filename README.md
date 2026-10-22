@@ -157,6 +157,10 @@ python build.py
 .\dist\UsageMonitorForClaudeAndCodex.exe --verbose
 ```
 
+Both providers share the combined product name and neutral logo for Windows notifications while retaining their notification titles and text. Notifications expire after five minutes; tray balloons are used if Windows toast registration or delivery fails.
+
+The rotating application log is beside the EXE or in the project root. To collect additional verbose diagnostics from PowerShell, run `cmd /c "UsageMonitorForClaudeAndCodex.exe --verbose > log.txt 2>&1"` and quit from a tray menu when finished.
+
 The build configuration lives in `usage_monitor.spec`. A complete smoke test checks:
 
 - two distinct provider icons appear from one process;

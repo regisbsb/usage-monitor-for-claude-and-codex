@@ -6,6 +6,17 @@ This is a fresh combined product derived from [Usage Monitor for Claude](https:/
 
 ## [Unreleased]
 
+## [1.0.3] - 2026-10-22
+
+### Fixed
+
+- Popup keyboard and mouse hooks use pointer-sized Windows results and handles, preventing lost keystrokes while either provider popup is open.
+- Both providers post Windows notifications under the combined product identity with a neutral logo, five-minute expiry, and tray-balloon fallback.
+
+### Documentation
+
+- Added PowerShell-compatible verbose-log collection instructions alongside the rotating application log.
+
 ## [1.0.2] - 2026-09-27
 
 ### Changed

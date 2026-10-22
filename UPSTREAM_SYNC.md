@@ -6,8 +6,8 @@ This repository combines two independently maintained source lines. Import chang
 
 | Source | Repository | Baseline head | Last reviewed SHA | Review status |
 |---|---|---|---|---|
-| Claude | https://github.com/jens-duttke/usage-monitor-for-claude | `3e2cfc3b2eb15e1f8b9b08e2b0d470750f84bad1` | `987fc0005291f98df2859d083431370bde313e16` | Synced through v1.23.0 by selective review |
-| Codex | https://github.com/ihor-sokoliuk/usage-monitor-for-codex | `cbd5996b38fa8bbf62a98034bc60e926bc3bed96` | `cbd5996b38fa8bbf62a98034bc60e926bc3bed96` | Synced; no newer upstream commits on 2026-09-27 |
+| Claude | https://github.com/jens-duttke/usage-monitor-for-claude | `3e2cfc3b2eb15e1f8b9b08e2b0d470750f84bad1` | `5f2712777ed8842506b03271629f02f5371f2e14` | Selectively reviewed through 2026-10-16 upstream changes |
+| Codex | https://github.com/ihor-sokoliuk/usage-monitor-for-codex | `cbd5996b38fa8bbf62a98034bc60e926bc3bed96` | `cbd5996b38fa8bbf62a98034bc60e926bc3bed96` | Synced; no newer commits at the 2026-10-17 upstream check |
 
 Common ancestor: `f9224c2667ce7210464590d1e5e3f5d8637c8c69`.
 
@@ -65,6 +65,18 @@ Review each source independently:
 | 2026-08-23 | Codex | common ancestor through `cbd5996b38fa8bbf62a98034bc60e926bc3bed96` | Codex provider, transport, fixtures, updater/logging, and provider-neutral fixes mapped into the combined design |
 | 2026-09-27 | Claude | `3e2cfc3..987fc00` (27 commits) | Selectively ported seven behavior commits and two supporting documentation commits; classified all remaining commits below |
 | 2026-09-27 | Codex | `cbd5996..cbd5996` (0 commits) | Current upstream head equals the existing Codex review cursor |
+| 2026-10-22 | Claude | `987fc00..5f27127` (9 commits, fetched 2026-10-17) | Ported three recommended changes plus supporting hook-fix documentation; classified all nine commits below |
+| 2026-10-22 | Codex | `cbd5996..cbd5996` (0 commits at the 2026-10-17 check) | Existing Codex cursor retained |
+
+### Claude commits reviewed and skipped on 2026-10-22
+
+| Source SHA | Reason |
+|---|---|
+| `07d581d` | KDE Plasma tray left-click handling is Linux-specific |
+| `4a2cd6e` | Linux bottom-panel anchoring does not apply to the Windows popup |
+| `6336b31` | Changelog entry for the skipped Linux bottom-panel fix |
+| `fd40bec` | GTK/WebKit popup caching and focus fixes; upstream explicitly keeps Windows window reuse disabled |
+| `5f27127` | X11/WebKitGTK fractional scaling is Linux-specific |
 
 ### Claude commits reviewed and skipped on 2026-09-27
 
@@ -98,3 +110,16 @@ The initial combined repository is a fresh integration rather than a merge commi
 | 2026-09-27 | Claude | `3bd6d62` | Adapted documentation | Explain quota visibility and event-variable eligibility in combined docs |
 | 2026-09-27 | Claude | `063758d` | Adapted shared port | Use effective Claude config directory in diagnostics and redact both home path spellings |
 | 2026-09-27 | Claude | `b4a258f` | Adapted documentation | Note symlink/junction redaction fix in the combined changelog |
+| 2026-10-22 | Claude | `86e4723` | Manual shared port | Pointer-sized low-level hook callbacks, results, and handles; regression tests for both provider popups |
+| 2026-10-22 | Claude | `e1be0c6` | Adapted documentation | Hook-fix changelog and Python-version caveat reviewed with `86e4723`; no separate runtime behavior |
+| 2026-10-22 | Claude | `84270bb` | Adapted shared port | Combined-identity WinRT toasts via existing pythonnet, five-minute expiry, safe diagnostics, and provider-scoped balloon fallback |
+| 2026-10-22 | Claude | `39886b1` | Adapted documentation | PowerShell verbose-log capture using the combined executable, alongside the existing rotating log |
+
+## Verification for the 2026-10-22 import
+
+- Native Windows Python 3.13: all 1,280 unit tests passed; Pyright reported zero errors and warnings.
+- Clean PyInstaller build for v1.0.3 from `usage_monitor.spec` produced `dist/UsageMonitorForClaudeAndCodex.exe`.
+- Native source and frozen EXE smoke used isolated empty Claude/Codex homes and disabled automatic Codex updates. Both tray icons and provider-specific signed-out popups worked; injected keyboard events traversed each popup's live low-level hook.
+- The frozen EXE launched from an unrelated temporary directory. Restart removed the old Codex app-server and restored both icons; Quit removed both tray windows and all tracked descendants, including the real Codex app-server and WebView2 processes.
+- Real WinRT delivery and Windows notification history confirmed both providers' startup messages under the combined AUMID with expiry set. Unit tests cover rejected registration, delivery failure, escaped XML, expiry, and provider-specific deferred routing.
+- No authenticated provider usage or quota-reset notification was exercised in the frozen smoke; those paths are covered by the unit suite.

@@ -86,14 +86,14 @@ def main() -> int:
 
     if not ensure_single_instance():
         return 0
-    register_notification_identity()
+    notification_identity_registered = register_notification_identity()
 
     claude_settings = get_provider_settings('claude')
     codex_settings = get_provider_settings('codex')
     supervisor = AppSupervisor([
         (ClaudeProvider(claude_dir, claude_settings), claude_settings),
         (CodexProvider(codex_home, codex_settings), codex_settings),
-    ])
+    ], notification_identity_registered=notification_identity_registered)
 
     def run_supervisor() -> None:
         try:

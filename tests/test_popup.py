@@ -16,7 +16,7 @@ from unittest.mock import MagicMock, patch
 
 from usage_monitor.cache import CacheSnapshot
 from usage_monitor.popup import (
-    UsagePopup, _BASELINE_DPI, _MONITORINFO, _SWP_NOACTIVATE, _SWP_NOSIZE, _SWP_NOZORDER,
+    UsagePopup, _HOOKPROC, _BASELINE_DPI, _MONITORINFO, _SWP_NOACTIVATE, _SWP_NOSIZE, _SWP_NOZORDER,
     _PopupApi, _init_config, _snapshot_to_dict, _usage_entries,
 )
 
@@ -1268,6 +1268,34 @@ class TestResizeAndPosition(unittest.TestCase):
 
         mock_window.resize.assert_called_once_with(340, 500)
         mock_window.move.assert_not_called()
+
+
+class TestHookSignatures(unittest.TestCase):
+    """Tests for the Win32 signatures behind the dismiss watch.
+
+    A low-level hook procedure returns ``LRESULT``, which is pointer-sized.
+    Declared narrower, the upper half of the return register is left
+    undefined on 64-bit Windows, and any nonzero value makes Windows drop the
+    keystroke or click as consumed.
+    """
+
+    def test_hook_proc_returns_pointer_sized_lresult(self):
+        """Regression: a ``c_long`` return type swallowed keystrokes system-wide while the popup was open."""
+        self.assertEqual(ctypes.sizeof(_HOOKPROC._restype_), ctypes.sizeof(ctypes.c_void_p))
+
+    def test_hook_proc_takes_code_wparam_lparam(self):
+        """The hook procedure signature matches ``HOOKPROC``."""
+        self.assertEqual(_HOOKPROC._argtypes_, (ctypes.c_int, ctypes.wintypes.WPARAM, ctypes.wintypes.LPARAM))
+
+    def test_call_next_hook_returns_pointer_sized_lresult(self):
+        """The next hook's result passes through untruncated."""
+        self.assertEqual(ctypes.sizeof(ctypes.windll.user32.CallNextHookEx.restype), ctypes.sizeof(ctypes.c_void_p))
+
+    def test_hook_handles_are_pointer_sized(self):
+        """Hook handles are not truncated to ``c_int`` on 64-bit."""
+        for name in ('SetWindowsHookExW', 'SetWinEventHook'):
+            with self.subTest(name=name):
+                self.assertEqual(ctypes.sizeof(getattr(ctypes.windll.user32, name).restype), ctypes.sizeof(ctypes.c_void_p))
 
 
 if __name__ == '__main__':

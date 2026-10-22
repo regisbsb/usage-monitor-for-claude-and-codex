@@ -213,5 +213,33 @@ class TestProviderNotificationText(unittest.TestCase):
         monitor.icon.notify.assert_called_once_with('Codex updated from 1.0 to 1.1.', 'Codex Updated')
 
 
+class TestNotificationRouting(unittest.TestCase):
+    """Both providers share delivery while retaining their own icon and content."""
+
+    def test_immediate_and_deferred_notifications_retain_provider(self) -> None:
+        claude = _make_monitor('claude')
+        codex = _make_monitor('codex')
+        claude.supervisor.notification_identity_registered = True
+        codex.supervisor.notification_identity_registered = True
+        with patch('usage_monitor.monitor.show_notification') as show:
+            with patch.object(claude, '_is_user_away', return_value=False):
+                claude._notify_or_defer('reset', 'Claude reset', 'Claude')
+            with patch.object(codex, '_is_user_away', return_value=True):
+                codex._notify_or_defer('reset', 'Codex reset', 'Codex')
+            show.assert_called_once_with(claude.icon, 'Claude reset', 'Claude', True)
+            codex._flush_deferred_notifications()
+            self.assertEqual(show.call_count, 2)
+            show.assert_called_with(codex.icon, 'Codex reset', 'Codex', True)
+            self.assertEqual(claude._deferred_notifications, {})
+            self.assertEqual(codex._deferred_notifications, {})
+
+    def test_failed_registration_requests_balloon_delivery(self) -> None:
+        monitor = _make_monitor('codex')
+        monitor.supervisor.notification_identity_registered = False
+        with patch('usage_monitor.monitor.show_notification') as show:
+            monitor._notify('message', 'Codex')
+        show.assert_called_once_with(monitor.icon, 'message', 'Codex', False)
+
+
 if __name__ == '__main__':
     unittest.main()
