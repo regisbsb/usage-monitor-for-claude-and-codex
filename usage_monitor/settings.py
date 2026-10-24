@@ -247,12 +247,12 @@ def _validate(data: dict, path: Path) -> dict:
                 drop.append(key)
 
         elif key == 'time_format':
-            if value not in _VALID_TIME_FORMATS:
+            if not isinstance(value, str) or value not in _VALID_TIME_FORMATS:
                 errors.append(f'  {key}: must be "24h" or "12h", got {value!r}')
                 drop.append(key)
 
         elif key == 'icon_style':
-            if value not in _VALID_ICON_STYLES:
+            if not isinstance(value, str) or value not in _VALID_ICON_STYLES:
                 errors.append(f'  {key}: must be "number+bars" or "numbers", got {value!r}')
                 drop.append(key)
 

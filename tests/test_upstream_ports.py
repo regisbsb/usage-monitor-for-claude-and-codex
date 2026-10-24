@@ -48,7 +48,7 @@ class TestIdlePolling(unittest.TestCase):
 
 
 class TestEventResetValues(unittest.TestCase):
-    """Null reset windows must remain valid subprocess environment values."""
+    """Reset commands receive a complete, provider-scoped quota snapshot."""
 
     def test_reset_and_threshold_commands_receive_empty_reset(self) -> None:
         monitor = _make_monitor()
@@ -58,6 +58,84 @@ class TestEventResetValues(unittest.TestCase):
             monitor._run_reset_command('five_hour', 0, 95, data={}, entry={'resets_at': None})
             monitor._run_threshold_command('five_hour', 90, 80, {'resets_at': None}, 'title', 'message')
         self.assertEqual([call.args[1]['USAGE_MONITOR_RESETS_AT'] for call in run.call_args_list], ['', ''])
+
+    def test_reset_snapshot_keeps_legacy_defaults_for_empty_or_null_windows(self) -> None:
+        for provider_id in ('claude', 'codex'):
+            for data in ({}, {'five_hour': None, 'seven_day': {'utilization': None, 'resets_at': None}}):
+                with self.subTest(provider=provider_id, data=data):
+                    monitor = _make_monitor(provider_id)
+                    monitor.settings = replace(monitor.settings, on_reset_command=['reset'])
+                    with patch('usage_monitor.monitor.run_event_command') as run:
+                        monitor._run_reset_command('five_hour', 0, 95, data=data, entry={'resets_at': None})
+
+                    env = run.call_args.args[1]
+                    self.assertEqual(env['USAGE_MONITOR_PROVIDER'], provider_id)
+                    self.assertEqual(env['USAGE_MONITOR_EVENT'], 'reset')
+                    self.assertEqual(env['USAGE_MONITOR_PREV_UTILIZATION'], '95')
+                    for field in ('FIVE_HOUR', 'SEVEN_DAY'):
+                        self.assertEqual(env[f'USAGE_MONITOR_UTILIZATION_{field}'], '0')
+                        self.assertEqual(env[f'USAGE_MONITOR_RESETS_AT_{field}'], '')
+                    run.assert_called_once_with(['reset'], env)
+
+    def test_reset_snapshot_includes_active_dynamic_quotas_and_skips_malformed_entries(self) -> None:
+        reset = '2026-10-25T00:00:00+00:00'
+        data = {
+            'seven_day': {'utilization': 1, 'resets_at': reset},
+            'synthetic_model': {'utilization': 17.4, 'resets_at': reset},
+            'three_day_model': {'utilization': 33.6, 'resets_at': None},
+            'account_model': {'utilization': 0, 'resets_at': None, 'from_account_limits': True},
+            'announced_code': {'utilization': 0, 'resets_at': None},
+            'missing_utilization': {'resets_at': reset},
+            'null_window': None,
+            'malformed_window': [],
+        }
+        for provider_id in ('claude', 'codex'):
+            with self.subTest(provider=provider_id):
+                monitor = _make_monitor(provider_id)
+                monitor.settings = replace(monitor.settings, on_reset_command=['reset'])
+                with patch('usage_monitor.monitor.run_event_command') as run:
+                    monitor._run_reset_command('synthetic_model', 17.4, 95, data=data, entry=data['synthetic_model'])
+
+                env = run.call_args.args[1]
+                self.assertEqual(env['USAGE_MONITOR_VARIANT'], 'synthetic_model')
+                self.assertEqual(env['USAGE_MONITOR_UTILIZATION'], '17')
+                self.assertEqual(env['USAGE_MONITOR_RESETS_AT'], reset)
+                for field, utilization, resets_at in (
+                    ('SEVEN_DAY', '1', reset),
+                    ('SYNTHETIC_MODEL', '17', reset),
+                    ('THREE_DAY_MODEL', '34', ''),
+                    ('ACCOUNT_MODEL', '0', ''),
+                ):
+                    self.assertEqual(env[f'USAGE_MONITOR_UTILIZATION_{field}'], utilization)
+                    self.assertEqual(env[f'USAGE_MONITOR_RESETS_AT_{field}'], resets_at)
+                for field in ('ANNOUNCED_CODE', 'MISSING_UTILIZATION', 'NULL_WINDOW', 'MALFORMED_WINDOW'):
+                    self.assertNotIn(f'USAGE_MONITOR_UTILIZATION_{field}', env)
+                    self.assertNotIn(f'USAGE_MONITOR_RESETS_AT_{field}', env)
+
+    def test_reset_snapshots_stay_provider_scoped(self) -> None:
+        with patch('usage_monitor.monitor.run_event_command') as run:
+            for provider_id, field in (('claude', 'five_hour_sonnet'), ('codex', 'seven_day_gpt_5_pro')):
+                monitor = _make_monitor(provider_id)
+                monitor.settings = replace(monitor.settings, on_reset_command=['reset'])
+                entry = {'utilization': 0, 'resets_at': None}
+                monitor._run_reset_command(field, 0, 95, data={field: entry}, entry=entry)
+
+        claude_env, codex_env = [call.args[1] for call in run.call_args_list]
+        self.assertEqual(claude_env['USAGE_MONITOR_PROVIDER'], 'claude')
+        self.assertIn('USAGE_MONITOR_UTILIZATION_FIVE_HOUR_SONNET', claude_env)
+        self.assertNotIn('USAGE_MONITOR_UTILIZATION_SEVEN_DAY_GPT_5_PRO', claude_env)
+        self.assertEqual(codex_env['USAGE_MONITOR_PROVIDER'], 'codex')
+        self.assertIn('USAGE_MONITOR_UTILIZATION_SEVEN_DAY_GPT_5_PRO', codex_env)
+        self.assertNotIn('USAGE_MONITOR_UTILIZATION_FIVE_HOUR_SONNET', codex_env)
+
+    def test_disabled_reset_command_does_not_run(self) -> None:
+        for provider_id in ('claude', 'codex'):
+            with self.subTest(provider=provider_id):
+                monitor = _make_monitor(provider_id)
+                monitor.settings = replace(monitor.settings, on_reset_command=[])
+                with patch('usage_monitor.monitor.run_event_command') as run:
+                    monitor._run_reset_command('five_hour', 0, 95, data={}, entry={})
+                run.assert_not_called()
 
 
 class TestActiveQuotas(unittest.TestCase):

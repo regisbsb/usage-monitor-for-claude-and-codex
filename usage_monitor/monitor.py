@@ -813,8 +813,8 @@ class ProviderMonitor:
         ``USAGE_MONITOR_RESETS_AT_<FIELD>`` pair per detected quota field, plus
         ``USAGE_MONITOR_EXTRA_USED`` when paid extra usage is enabled and
         ``USAGE_MONITOR_EXTRA_LIMIT`` when it also has a monthly limit (an
-        uncapped account has no limit to report).  Shared by the startup and
-        double-click commands.
+        uncapped account has no limit to report).  Shared by startup,
+        reset, and double-click commands.
         """
         env_vars: dict[str, str] = {}
         for key, entry in data.items():
@@ -883,16 +883,17 @@ class ProviderMonitor:
         if not self.settings.on_reset_command:
             return
 
-        pct_5h = (data.get('five_hour') or {}).get('utilization', 0) or 0
-        pct_7d = (data.get('seven_day') or {}).get('utilization', 0) or 0
         run_event_command(self.settings.on_reset_command, {
             'USAGE_MONITOR_PROVIDER': self.provider.provider_id,
             'USAGE_MONITOR_EVENT': 'reset',
             'USAGE_MONITOR_VARIANT': variant,
             'USAGE_MONITOR_UTILIZATION': str(round(pct)),
             'USAGE_MONITOR_PREV_UTILIZATION': str(round(prev_pct)),
-            'USAGE_MONITOR_UTILIZATION_FIVE_HOUR': str(round(pct_5h)),
-            'USAGE_MONITOR_UTILIZATION_SEVEN_DAY': str(round(pct_7d)),
+            'USAGE_MONITOR_UTILIZATION_FIVE_HOUR': '0',
+            'USAGE_MONITOR_RESETS_AT_FIVE_HOUR': '',
+            'USAGE_MONITOR_UTILIZATION_SEVEN_DAY': '0',
+            'USAGE_MONITOR_RESETS_AT_SEVEN_DAY': '',
+            **self._quota_snapshot_env(data),
             'USAGE_MONITOR_RESETS_AT': entry.get('resets_at') or '',
             'USAGE_MONITOR_TITLE': self._notification_text('notify_reset_title'),
             'USAGE_MONITOR_MESSAGE': self._notification_text('notify_reset_provider'),

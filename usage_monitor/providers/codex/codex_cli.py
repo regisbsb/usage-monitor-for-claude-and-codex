@@ -131,13 +131,9 @@ def cli_version(path: Path) -> str:
         if cached and cached[0] == modified_time:
             return cached[1]
 
-        process = subprocess.run(
-            [str(path), '--version'],
-            capture_output=True,
-            text=True,
-            timeout=10,
-            creationflags=subprocess.CREATE_NO_WINDOW,
-        )
+        process = _run_cli([str(path), '--version'], timeout=10)
+        if process.returncode != 0:
+            return ''
         match = re.search(r'(\d+\.\d+\.\d+)', process.stdout.strip())
         version = match.group(1) if match else ''
         _version_cache[path] = (modified_time, version)
@@ -154,13 +150,7 @@ def update_cli() -> CliUpdateResult:
     old_version = cli_version(CODEX_CLI_PATH)
     log.info('codex update started (installed: %s)', old_version or '?')
     try:
-        process = subprocess.run(
-            [str(CODEX_CLI_PATH), 'update'],
-            capture_output=True,
-            text=True,
-            timeout=120,
-            creationflags=subprocess.CREATE_NO_WINDOW,
-        )
+        process = _run_cli([str(CODEX_CLI_PATH), 'update'], timeout=120)
     except subprocess.TimeoutExpired:
         log.warning('codex update -> timeout')
         return CliUpdateResult(False, False, old_version, old_version, 'Timeout')
@@ -181,5 +171,36 @@ def update_cli() -> CliUpdateResult:
     updated = bool(old_version and new_version and new_version != old_version)
     log.info('codex update -> OK (installed: %s, updated: %s)', new_version or '?', updated)
     return CliUpdateResult(True, updated, old_version, new_version or old_version, '')
+
+
+def _run_cli(command: list[str], timeout: int) -> subprocess.CompletedProcess[str]:
+    """Capture a Codex CLI command as UTF-8 with both output streams present.
+
+    Parameters
+    ----------
+    command : list[str]
+        Native CLI executable and fixed arguments selected by the caller.
+    timeout : int
+        Maximum command duration in seconds.
+
+    Returns
+    -------
+    subprocess.CompletedProcess[str]
+        Completed command with captured stdout and stderr.
+
+    Raises
+    ------
+    OSError
+        Command startup or output capture failed.
+    subprocess.TimeoutExpired
+        The command exceeded the timeout.
+    """
+    process = subprocess.run(
+        command, capture_output=True, text=True, encoding='utf-8', errors='replace',
+        timeout=timeout, creationflags=subprocess.CREATE_NO_WINDOW,
+    )
+    if process.stdout is None or process.stderr is None:
+        raise OSError('CLI output could not be captured')
+    return process
 
 

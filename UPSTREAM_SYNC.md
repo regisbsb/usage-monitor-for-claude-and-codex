@@ -6,8 +6,8 @@ This repository combines two independently maintained source lines. Import chang
 
 | Source | Repository | Baseline head | Last reviewed SHA | Review status |
 |---|---|---|---|---|
-| Claude | https://github.com/jens-duttke/usage-monitor-for-claude | `3e2cfc3b2eb15e1f8b9b08e2b0d470750f84bad1` | `5f2712777ed8842506b03271629f02f5371f2e14` | Selectively reviewed through 2026-10-16 upstream changes |
-| Codex | https://github.com/ihor-sokoliuk/usage-monitor-for-codex | `cbd5996b38fa8bbf62a98034bc60e926bc3bed96` | `cbd5996b38fa8bbf62a98034bc60e926bc3bed96` | Synced; no newer commits at the 2026-10-17 upstream check |
+| Claude | https://github.com/jens-duttke/usage-monitor-for-claude | `3e2cfc3b2eb15e1f8b9b08e2b0d470750f84bad1` | `5cbccc5e6f20a03efbc6779cc3c6d8e621acdef2` | Selectively reviewed through 2026-10-23 upstream changes; exclusions already imported and remaining changes skipped |
+| Codex | https://github.com/ihor-sokoliuk/usage-monitor-for-codex | `cbd5996b38fa8bbf62a98034bc60e926bc3bed96` | `6deb0294bacbf2c02bd319cdcdb2dfdeaafa077d` | Selectively reviewed through 2026-10-23 upstream changes; three fixes imported and deferred work recorded below |
 
 Common ancestor: `f9224c2667ce7210464590d1e5e3f5d8637c8c69`.
 
@@ -68,6 +68,40 @@ Review each source independently:
 | 2026-10-22 | Claude | `987fc00..5f27127` (9 commits, fetched 2026-10-17) | Ported three recommended changes plus supporting hook-fix documentation; classified all nine commits below |
 | 2026-10-22 | Codex | `cbd5996..cbd5996` (0 commits at the 2026-10-17 check) | Existing Codex cursor retained |
 | 2026-10-24 | Claude | `14fdd6f14ef49a4686b6c820a8fb46e2f40c10ff` only ([PR #113](https://github.com/jens-duttke/usage-monitor-for-claude/pull/113)) | Targeted popup-exclusion contribution reviewed and manually ported; intervening commits not reviewed and both review cursors unchanged |
+| 2026-10-24 | Claude | `5f27127..5cbccc5` (4 commits) | Reviewed the complete range; popup exclusions match the existing targeted port, prepaid-only optimization and standalone release/credit documentation skipped |
+| 2026-10-24 | Codex | `cbd5996..6deb029` (95 commits: 90 inherited Claude commits and 5 Codex commits) | Reviewed the complete range against both existing provider implementations; manually ported enum validation, complete reset snapshots, and Codex CLI capture hardening; remaining changes classified below |
+
+### Claude commits reviewed on 2026-10-24
+
+| Source SHA | Classification and result |
+|---|---|
+| `6c176f1df555df8516adffb21e75f2960e5e7e3c` | Claude provider/cache optimization skipped: the combined product does not fetch prepaid credits, and the prerequisite dynamically constructed endpoint remains excluded |
+| `31e2b329de23463b562232ed9050f42d3cf2a0fe` | Standalone v1.24.0 release/version metadata skipped; preserve the combined version and identity |
+| `045079fcef0bfe25b8c92ad79843c833b0420707` | Shared popup exclusions already imported from the original `14fdd6f` PR head; the upstream squash adds no missing behavior |
+| `5cbccc5e6f20a03efbc6779cc3c6d8e621acdef2` | Standalone changelog attribution/prose skipped; no runtime behavior |
+
+### Codex commits reviewed on 2026-10-24
+
+The upstream Codex branch rebased onto Claude and then preserved its old published ancestry. The 95-commit range contains 90 commits also reachable from Claude `5cbccc5`, plus the five Codex commits below. Those 90 shared commits are covered by the Claude baseline, earlier per-commit review/import records, and the four-commit review above; they do not represent 90 additional Codex features to import.
+
+| Source SHA | Classification and result |
+|---|---|
+| `3c8934b910af73b1b74ed7bb0545b92f22f99ebf` | Codex provider/shared adaptation partially imported: UTF-8 CLI capture, failed-version rejection, and generic reset-command quota snapshots. Existing account parsing, normalization, tri-state profiles, authentication classification, and provider recovery are already present. Optional settings/cadence changes are deferred below; Linux backends, standalone packaging/identity, the quick-action event rename, and inactive-quota filtering changes are skipped to preserve combined contracts |
+| `ca80f5ee0dcf5a131fa6beea3430efac948ff536` | Standalone release workflow portability skipped; it targets the Codex product rather than the combined executable |
+| `f5d982a49457899716a95e07db63c79d69dc2b77` | Shared validation/reset compatibility partially imported: string guards for enum settings and legacy reset-snapshot defaults. App-server lifecycle changes and their API/cache handling are deferred below; Linux, standalone version, and supporting standalone documentation changes skipped |
+| `be4f1fa6baa7642ee2a07ce624003a103f386720` | Ancestry-preservation merge; its tree equals `f5d982a`, so no separate behavior to import |
+| `6deb0294bacbf2c02bd319cdcdb2dfdeaafa077d` | PR merge; its tree equals `f5d982a`, so no separate behavior to import |
+
+### Deferred Codex changes after the 2026-10-24 review
+
+These items remain pending even though the review cursor advances. They were not included in the three approved fixes.
+
+| Source SHA | Deferred change and reason |
+|---|---|
+| `f5d982a` | Graceful shutdown, native descendant-exit verification, retained Job ownership, and updater/restart failure handling need a coordinated combined-provider/supervisor adaptation. The standalone native shutdown test `test_descendant_is_gone_before_replacement` failed in both its full suite and focused rerun; root cause remains unproven |
+| `3c8934b` | Codex-only 600-second idle cadence changes polling policy; retain the current independent provider cadence until separately selected |
+| `3c8934b` | `poll_fast <= poll_interval` validation must apply after the combined application/provider settings overlay, rather than validate fragments against standalone defaults |
+| `3c8934b` | Display-only custom Codex CLI versions require nested Codex configuration; do not import the standalone flat setting or enable it implicitly |
 
 ### Claude commits reviewed and skipped on 2026-10-22
 
@@ -116,6 +150,18 @@ The initial combined repository is a fresh integration rather than a merge commi
 | 2026-10-22 | Claude | `84270bb` | Adapted shared port | Combined-identity WinRT toasts via existing pythonnet, five-minute expiry, safe diagnostics, and provider-scoped balloon fallback |
 | 2026-10-22 | Claude | `39886b1` | Adapted documentation | PowerShell verbose-log capture using the combined executable, alongside the existing rotating log |
 | 2026-10-24 | Claude | `14fdd6f14ef49a4686b6c820a8fb46e2f40c10ff` ([PR #113](https://github.com/jens-duttke/usage-monitor-for-claude/pull/113)) | Manual shared port | Exact popup-field exclusions translated to shared formatting, nested provider settings, tests, and docs; default remains `['*']` for both providers |
+| 2026-10-24 | Codex | `3c8934b910af73b1b74ed7bb0545b92f22f99ebf` | Manual Codex/shared port | Explicit UTF-8 CLI capture with replacement, failed-version and missing-stream rejection, and complete reset-command quota snapshots via the existing active-quota helper; fixed native update commands and provider isolation retained |
+| 2026-10-24 | Codex | `f5d982a49457899716a95e07db63c79d69dc2b77` | Manual shared port | Reject malformed enum types before set membership across all settings sections; preserve legacy utilization/reset defaults alongside generic reset snapshots |
+
+## Verification for the 2026-10-24 import
+
+- Native Windows full suite: all 1,303 tests passed, including the focused settings (187), Codex CLI (35), and upstream-port regression (15) suites.
+- New regressions cover malformed enum containers/nulls and settings-section isolation; dynamic reset snapshots, compatibility defaults, inactive/malformed windows, provider isolation, and disabled commands; fixed native CLI arguments, UTF-8 capture, failed versions, missing streams, and sanitized diagnostics.
+- Pyright reported zero errors and warnings; an independent read-only review found no actionable issues.
+- A clean PyInstaller build from `usage_monitor.spec` produced `build/upstream-ports-smoke-20261024/dist/UsageMonitorForClaudeAndCodex.exe` for isolated verification.
+- Native source and frozen smoke both verified two tray icons, independent signed-out snapshots, and provider-specific popup content. Real menu Restart recreated both trays and removed all tracked prior descendants; Quit removed all tracked remaining descendants, including Codex app-server and WebView2. The existing `dist` application kept running unchanged.
+- Native smoke used isolated empty provider homes, Codex file-backed authentication configuration, and disabled automatic Codex updates. Authenticated usage and quota-reset events were not exercised in the GUI smoke; the changed behavior is covered by unit regressions.
+- The three fixes were manually adapted in the combined worktree without committing or pushing. Deferred lifecycle, cadence, and optional settings changes were not imported.
 
 ## Verification for the 2026-10-22 import
 

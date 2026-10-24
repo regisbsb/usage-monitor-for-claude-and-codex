@@ -147,6 +147,30 @@ class TestCliVersion(unittest.TestCase):
 
     @patch('usage_monitor.providers.codex.codex_cli.subprocess.run')
     @patch('pathlib.Path.stat', return_value=MagicMock(st_mtime=1000.0))
+    def test_failed_version_command_is_not_parsed_or_cached(self, _mock_stat, mock_run):
+        mock_run.side_effect = [
+            subprocess.CompletedProcess(['codex', '--version'], 7, stdout='codex-cli 0.140.0', stderr='synthetic failure'),
+            subprocess.CompletedProcess(['codex', '--version'], 0, stdout='codex-cli 0.144.5', stderr=''),
+        ]
+        path = Path('/fake/codex.exe')
+
+        self.assertEqual(cli_version(path), '')
+        self.assertNotIn(path, codex_cli._version_cache)
+        self.assertEqual(cli_version(path), '0.144.5')
+        self.assertEqual(mock_run.call_count, 2)
+
+    @patch('usage_monitor.providers.codex.codex_cli.subprocess.run')
+    @patch('pathlib.Path.stat', return_value=MagicMock(st_mtime=1000.0))
+    def test_missing_capture_stream_returns_empty_without_caching(self, _mock_stat, mock_run):
+        path = Path('/fake/codex.exe')
+        for stdout, stderr in ((None, ''), ('codex-cli 0.140.0', None)):
+            with self.subTest(stdout=stdout, stderr=stderr):
+                mock_run.return_value = subprocess.CompletedProcess(['codex', '--version'], 0, stdout=stdout, stderr=stderr)
+                self.assertEqual(cli_version(path), '')
+                self.assertNotIn(path, codex_cli._version_cache)
+
+    @patch('usage_monitor.providers.codex.codex_cli.subprocess.run')
+    @patch('pathlib.Path.stat', return_value=MagicMock(st_mtime=1000.0))
     def test_timeout_returns_empty(self, _mock_stat, mock_run):
         """Returns empty string on timeout."""
         mock_run.side_effect = subprocess.TimeoutExpired(cmd='codex', timeout=10)
@@ -168,7 +192,8 @@ class TestCliVersion(unittest.TestCase):
         cli_version(path)
         mock_run.assert_called_once_with(
             [str(path), '--version'],
-            capture_output=True, text=True, timeout=10, creationflags=subprocess.CREATE_NO_WINDOW,
+            capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=10,
+            creationflags=subprocess.CREATE_NO_WINDOW,
         )
 
     @patch('usage_monitor.providers.codex.codex_cli.subprocess.run')
@@ -220,7 +245,7 @@ class TestUpdateCli(unittest.TestCase):
 
         self.assertEqual(result, CliUpdateResult(True, True, '0.140.0', '0.144.5', ''))
         run.assert_called_once_with(
-            [str(cli), 'update'], capture_output=True, text=True, timeout=120,
+            [str(cli), 'update'], capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=120,
             creationflags=subprocess.CREATE_NO_WINDOW,
         )
 
@@ -257,6 +282,24 @@ class TestUpdateCli(unittest.TestCase):
         self.assertEqual(result.error, 'codex update exited with code 7')
         self.assertNotIn('private', result.error)
         self.assertNotIn('secret', result.error)
+
+    @patch('usage_monitor.providers.codex.codex_cli.subprocess.run')
+    @patch('usage_monitor.providers.codex.codex_cli.cli_version', return_value='0.140.0')
+    def test_missing_capture_stream_fails_without_logging_output(self, version, run):
+        with TemporaryDirectory() as tmp:
+            cli = Path(tmp) / 'codex.exe'
+            cli.touch()
+            for stdout, stderr in ((None, 'synthetic private stderr'), ('synthetic private stdout', None)):
+                with self.subTest(stdout=stdout, stderr=stderr), \
+                     patch.object(codex_cli, 'CODEX_CLI_PATH', cli), \
+                     self.assertLogs(codex_cli.log, level='INFO') as logs:
+                    version.reset_mock()
+                    run.return_value = subprocess.CompletedProcess([str(cli), 'update'], 0, stdout=stdout, stderr=stderr)
+                    result = update_cli()
+
+                self.assertEqual(result, CliUpdateResult(False, False, '0.140.0', '0.140.0', 'OS error ?'))
+                self.assertNotIn('synthetic private', '\n'.join(logs.output))
+                version.assert_called_once_with(cli)
 
 
 # ---------------------------------------------------------------------------

@@ -90,9 +90,11 @@ Add-Type -AssemblyName PresentationFramework
 | `USAGE_MONITOR_TITLE` | Localized notification title |
 | `USAGE_MONITOR_MESSAGE` | Localized notification body |
 | `USAGE_MONITOR_UTILIZATION_FIVE_HOUR` | Compatibility value for the provider's `five_hour`, or `0` |
+| `USAGE_MONITOR_RESETS_AT_FIVE_HOUR` | Compatibility reset timestamp for `five_hour`, or empty |
 | `USAGE_MONITOR_UTILIZATION_SEVEN_DAY` | Compatibility value for the provider's `seven_day`, or `0` |
+| `USAGE_MONITOR_RESETS_AT_SEVEN_DAY` | Compatibility reset timestamp for `seven_day`, or empty |
 
-Reset commands can fire for any normalized quota field, not only the compatibility pair.
+Reset commands can fire for any normalized quota field. They also receive the provider's full [quota snapshot](#quota-snapshots-for-reset-startup-and-double-click).
 
 ## Threshold event
 
@@ -107,9 +109,9 @@ Reset commands can fire for any normalized quota field, not only the compatibili
 
 Claude can additionally emit `USAGE_MONITOR_EXTRA_USED` and `USAGE_MONITOR_EXTRA_LIMIT` when its normalized extra-usage state is active. Codex does not emit these from raw app-server credits metadata.
 
-## Startup and double-click snapshots
+## Quota snapshots for reset, startup, and double-click
 
-The command receives a pair for every detected quota field:
+Each of these commands receives a pair for every active normalized quota field from the triggering provider:
 
 ```text
 USAGE_MONITOR_UTILIZATION_<FIELD>
@@ -119,6 +121,8 @@ USAGE_MONITOR_RESETS_AT_<FIELD>
 The field name is uppercased. For example, `seven_day_gpt_5_pro` becomes `USAGE_MONITOR_UTILIZATION_SEVEN_DAY_GPT_5_PRO`. A missing reset is an empty string. Duration-less Codex windows still emit variables.
 
 An announced code-named quota with no active reset window is omitted from event variables, matching the popup and tray. A duration-named quota or a marked Claude account limit remains available before its first window.
+
+Claude snapshots also include `USAGE_MONITOR_EXTRA_USED` and, for capped extra usage, `USAGE_MONITOR_EXTRA_LIMIT` when that provider explicitly normalizes active extra usage. Codex snapshots do not infer spending variables from raw app-server credits metadata.
 
 Double-click before a provider's first successful update supplies only common variables. Startup commands wait for that provider's first successful update; the other provider's success does not trigger them.
 

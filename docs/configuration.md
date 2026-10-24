@@ -12,6 +12,8 @@ The first combined settings file found is authoritative:
 
 The app reads settings at startup and never creates or modifies the file. Use **Restart** from either tray menu after editing it.
 
+Invalid `time_format` and `icon_style` values, including JSON arrays or objects, are ignored with a settings warning. Valid settings in other sections are preserved.
+
 If no combined file exists, the app can read the standalone monitors' provider-specific settings independently as a migration fallback:
 
 - Claude: the legacy `usage-monitor-settings.json` locations associated with the selected Claude configuration directory

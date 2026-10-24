@@ -113,6 +113,8 @@ Unknown RPC error codes are transient. Authentication classification requires ex
 
 When enabled, the Codex provider invokes only the installed CLI's fixed `codex update` command. It stops the app-server and serializes the updater against logical provider operations first. Raw updater output is not logged. A notification is shown only when the installed version actually changes.
 
+Codex version and update output is captured as UTF-8 with replacement for invalid bytes. A nonzero version-command exit or a missing captured stream is treated as a failure; a failed version command is not cached.
+
 ## Shared isolation rules
 
 - Claude errors, cooldowns, refresh state, and account fingerprints affect only Claude.

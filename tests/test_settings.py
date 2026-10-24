@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import unittest
+from copy import deepcopy
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import MagicMock, patch
@@ -489,6 +490,66 @@ class TestSettingsValidation(unittest.TestCase):
         """Non-string icon_style value is dropped."""
         result, _ = self._run_validate({'icon_style': 2})
         self.assertNotIn('icon_style', result)
+
+    def test_invalid_enum_values_are_dropped(self) -> None:
+        """Malformed enum values warn without discarding unrelated settings."""
+        invalid_values = ([], ['numbers'], {}, {'format': '24h'}, None, '', False, 0)
+        for key in ('time_format', 'icon_style'):
+            for value in invalid_values:
+                with self.subTest(key=key, value=value):
+                    result, mock = self._run_validate({key: value, 'bg': '#000'})
+                    self.assertEqual(result, {'bg': '#000'})
+                    mock.windll.user32.MessageBoxW.assert_called_once()
+
+    def test_invalid_enum_values_are_isolated_to_their_section(self) -> None:
+        """A malformed enum in one section preserves the other provider's settings."""
+        valid_data = {
+            'time_format': '24h',
+            'icon_style': 'number+bars',
+            'application': {'time_format': '12h', 'icon_style': 'numbers'},
+            'providers': {
+                'claude': {'time_format': '24h', 'icon_style': 'numbers', 'poll_interval': 300},
+                'codex': {'time_format': '12h', 'icon_style': 'number+bars', 'poll_interval': 240},
+            },
+        }
+        for section in ((), ('application',), ('providers', 'claude'), ('providers', 'codex')):
+            for key in ('time_format', 'icon_style'):
+                for value in ([], ['numbers'], {}, {'format': '24h'}, None, ''):
+                    with self.subTest(section=section, key=key, value=value):
+                        data = deepcopy(valid_data)
+                        expected = deepcopy(valid_data)
+                        target = data
+                        expected_target = expected
+                        for part in section:
+                            target = target[part]
+                            expected_target = expected_target[part]
+                        target[key] = value
+                        del expected_target[key]
+
+                        mock_ctypes = MagicMock()
+                        with patch.object(settings_mod, 'ctypes', mock_ctypes):
+                            result = settings_mod._validate_combined(data, Path('/fake/settings.json'))
+
+                        self.assertEqual(result, expected)
+                        mock_ctypes.windll.user32.MessageBoxW.assert_called_once()
+
+    def test_valid_enum_values_are_preserved_in_every_section(self) -> None:
+        """Both valid choices survive validation at each settings scope."""
+        data = {
+            'time_format': '24h',
+            'icon_style': 'number+bars',
+            'application': {'time_format': '12h', 'icon_style': 'numbers'},
+            'providers': {
+                'claude': {'time_format': '24h', 'icon_style': 'numbers'},
+                'codex': {'time_format': '12h', 'icon_style': 'number+bars'},
+            },
+        }
+        mock_ctypes = MagicMock()
+        with patch.object(settings_mod, 'ctypes', mock_ctypes):
+            result = settings_mod._validate_combined(deepcopy(data), Path('/fake/settings.json'))
+
+        self.assertEqual(result, data)
+        mock_ctypes.windll.user32.MessageBoxW.assert_not_called()
 
     # Non-negative numeric validation
 
