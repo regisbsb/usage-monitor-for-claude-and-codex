@@ -67,6 +67,7 @@ Review each source independently:
 | 2026-09-27 | Codex | `cbd5996..cbd5996` (0 commits) | Current upstream head equals the existing Codex review cursor |
 | 2026-10-22 | Claude | `987fc00..5f27127` (9 commits, fetched 2026-10-17) | Ported three recommended changes plus supporting hook-fix documentation; classified all nine commits below |
 | 2026-10-22 | Codex | `cbd5996..cbd5996` (0 commits at the 2026-10-17 check) | Existing Codex cursor retained |
+| 2026-10-24 | Claude | `14fdd6f14ef49a4686b6c820a8fb46e2f40c10ff` only ([PR #113](https://github.com/jens-duttke/usage-monitor-for-claude/pull/113)) | Targeted popup-exclusion contribution reviewed and manually ported; intervening commits not reviewed and both review cursors unchanged |
 
 ### Claude commits reviewed and skipped on 2026-10-22
 
@@ -114,6 +115,7 @@ The initial combined repository is a fresh integration rather than a merge commi
 | 2026-10-22 | Claude | `e1be0c6` | Adapted documentation | Hook-fix changelog and Python-version caveat reviewed with `86e4723`; no separate runtime behavior |
 | 2026-10-22 | Claude | `84270bb` | Adapted shared port | Combined-identity WinRT toasts via existing pythonnet, five-minute expiry, safe diagnostics, and provider-scoped balloon fallback |
 | 2026-10-22 | Claude | `39886b1` | Adapted documentation | PowerShell verbose-log capture using the combined executable, alongside the existing rotating log |
+| 2026-10-24 | Claude | `14fdd6f14ef49a4686b6c820a8fb46e2f40c10ff` ([PR #113](https://github.com/jens-duttke/usage-monitor-for-claude/pull/113)) | Manual shared port | Exact popup-field exclusions translated to shared formatting, nested provider settings, tests, and docs; default remains `['*']` for both providers |
 
 ## Verification for the 2026-10-22 import
 

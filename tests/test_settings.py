@@ -53,12 +53,13 @@ class TestLoadSettings(unittest.TestCase):
 
     def test_custom_config_dir_fallback(self):
         """Falls back to CLAUDE_CONFIG_DIR when no file next to app."""
-        with TemporaryDirectory() as app_tmp, TemporaryDirectory() as config_tmp:
+        with TemporaryDirectory() as app_tmp, TemporaryDirectory() as home_tmp, TemporaryDirectory() as config_tmp:
             config_dir = Path(config_tmp)
             settings = {'bg': '#111111'}
             (config_dir / settings_mod.SETTINGS_FILENAME).write_text(json.dumps(settings), encoding='utf-8')
             fake_file = str(Path(app_tmp) / 'usage_monitor' / 'settings.py')
             with patch.object(settings_mod, '__file__', fake_file), \
+                 patch.object(Path, 'home', return_value=Path(home_tmp)), \
                  patch.dict('os.environ', {'CLAUDE_CONFIG_DIR': config_tmp}), \
                  patch.object(settings_mod, 'ctypes', MagicMock()):
                 result = settings_mod._load_settings()
@@ -1154,6 +1155,35 @@ class TestPopupFieldsValidation(unittest.TestCase):
         result, mock = self._run_validate({'popup_fields': ['five_hour', 'seven_day']})
         self.assertEqual(result['popup_fields'], ['five_hour', 'seven_day'])
         mock.windll.user32.MessageBoxW.assert_not_called()
+
+    def test_exclusions_are_valid(self) -> None:
+        """Exact field exclusions are valid with a wildcard or explicit field list."""
+        for fields in (
+            ['*', '-iguana_necktie'],
+            ['-iguana_necktie', '*', '-unknown_quota'],
+            ['five_hour', '-five_hour', 'seven_day'],
+            ['-iguana_necktie'],
+        ):
+            with self.subTest(popup_fields=fields):
+                result, mock = self._run_validate({'popup_fields': fields})
+                self.assertEqual(result['popup_fields'], fields)
+                mock.windll.user32.MessageBoxW.assert_not_called()
+
+    def test_duplicate_exclusions_removed(self) -> None:
+        """Deduplication preserves the order of exclusions and inclusions."""
+        fields = ['-iguana_necktie', 'five_hour', '-iguana_necktie', '*', '-seven_day', 'five_hour']
+        result, mock = self._run_validate({'popup_fields': fields})
+        self.assertEqual(result['popup_fields'], ['-iguana_necktie', 'five_hour', '*', '-seven_day'])
+        mock.windll.user32.MessageBoxW.assert_not_called()
+
+    def test_exclusion_without_field_dropped(self) -> None:
+        """A bare minus or wildcard exclusion reports an invalid setting."""
+        for field in ('-', '-*'):
+            with self.subTest(field=field):
+                result, mock = self._run_validate({'popup_fields': ['*', field]})
+                self.assertNotIn('popup_fields', result)
+                mock.windll.user32.MessageBoxW.assert_called_once()
+                self.assertIn('exclusions must name a field', mock.windll.user32.MessageBoxW.call_args.args[1])
 
     def test_empty_list_valid(self):
         """Empty list is valid (no bars shown)."""

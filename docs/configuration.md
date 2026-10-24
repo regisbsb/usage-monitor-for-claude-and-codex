@@ -131,13 +131,33 @@ The following settings are provider-specific:
 | Key | Default | Purpose |
 |---|---|---|
 | `tooltip_fields` | `['five_hour', 'seven_day']` | Ordered tooltip quota fields |
-| `popup_fields` | `['*']` | Ordered popup fields; `*` inserts remaining detected quotas |
+| `popup_fields` | `['*']` | Ordered popup fields; `*` inserts remaining active quotas and `-field_name` excludes a field |
 | `icon_fields` | `['five_hour', 'seven_day']` | Exactly two preferred tray slots |
 | `compact_hide` | `[]` | Sections or quota bars hidden in pinned compact mode |
 
 An `icon_fields` entry may use the `:overage` display suffix where supported, for example `five_hour:overage`. Available configured fields keep their order; missing fields can be replaced by unused detected fields in duration order. A provider with one active quota draws one centered bar rather than an empty second line.
 
 Tray theme overrides can be placed within each provider so the two icons remain distinguishable. `icon_light` and `icon_dark` map channels such as `fg`, `fg_half`, `fg_dim`, and `fg_warn` to `[R, G, B, A]` arrays.
+
+### Popup field exclusions
+
+Set `popup_fields` inside the matching provider object. Prefix a field name with `-` to hide its popup bar, including in the pinned view. Exclusions match exact field names, not patterns, and override explicit inclusions and `*` regardless of entry order. Unknown exclusions have no effect.
+
+For example, show all active Claude quotas except `iguana_necktie`:
+
+```json
+{
+  "providers": {
+    "claude": {
+      "popup_fields": ["*", "-iguana_necktie"]
+    }
+  }
+}
+```
+
+Both providers default to `["*"]`; this example changes only Claude. Popup exclusions do not affect tray icons, tooltips, polling, alerts, or event commands. A list containing only exclusions shows no bars; include `"*"` to keep the other active quota types.
+
+`popup_fields` must be an array of non-empty strings. `"*"` may appear at most once. Duplicates are removed, and unknown field names are accepted. Bare `"-"` and `"-*"` are rejected.
 
 ## Alert thresholds
 

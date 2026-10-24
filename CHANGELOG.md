@@ -6,6 +6,10 @@ This is a fresh combined product derived from [Usage Monitor for Claude](https:/
 
 ## [Unreleased]
 
+### Added
+
+- Each provider's [`popup_fields`](docs/configuration.md#popup-field-exclusions) now accepts exact exclusions such as `["*", "-iguana_necktie"]` to hide specific popup bars while keeping the other active quotas visible.
+
 ## [1.0.3] - 2026-10-22
 
 ### Fixed

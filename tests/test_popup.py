@@ -14,6 +14,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import usage_monitor.settings as settings_mod
 from usage_monitor.cache import CacheSnapshot
 from usage_monitor.popup import (
     UsagePopup, _HOOKPROC, _BASELINE_DPI, _MONITORINFO, _SWP_NOACTIVATE, _SWP_NOSIZE, _SWP_NOZORDER,
@@ -356,6 +357,42 @@ class TestSnapshotToDict(unittest.TestCase):
         result = _snapshot_to_dict(_snap(usage=usage), installations=[])
         keys = [bar['key'] for bar in result['usage']]
         self.assertEqual(keys, ['five_hour', 'seven_day_opus'])
+
+    @patch('usage_monitor.popup.elapsed_pct', return_value=None)
+    @patch('usage_monitor.popup.time_until', return_value='')
+    @patch('usage_monitor.popup.divider_positions', return_value=[])
+    def test_excluded_active_code_named_quota_not_rendered(self, _mock_div, _mock_tu, _mock_ep) -> None:
+        """The wildcard keeps other and newly introduced quotas after one is hidden."""
+        usage = {
+            'iguana_necktie': {'utilization': 40, 'resets_at': '2026-01-01T05:00:00Z'},
+            'nimbus_quill': {'utilization': 30, 'resets_at': '2026-01-01T05:00:00Z'},
+            'seven_day_fable': {'utilization': 20, 'resets_at': None},
+            'five_hour': {'utilization': 10, 'resets_at': '2026-01-01T05:00:00Z'},
+        }
+        result = _snapshot_to_dict(_snap(usage=usage), installations=[], popup_fields=['*', '-iguana_necktie'])
+        self.assertEqual([bar['key'] for bar in result['usage']], ['five_hour', 'seven_day_fable', 'nimbus_quill'])
+        self.assertEqual([bar['pct_text'] for bar in result['usage']], ['10%', '20%', '30%'])
+
+    def test_claude_exclusion_preserves_codex_settings_and_rendering(self) -> None:
+        """Provider configuration scopes exclusions even when both receive the same field."""
+        document = {'providers': {'claude': {'popup_fields': ['*', '-iguana_necktie']}, 'codex': {'popup_fields': ['seven_day', '*']}}}
+        with patch.object(settings_mod, 'ctypes', MagicMock()) as mock_ctypes:
+            validated = settings_mod._validate_combined(document, Path('/fake/settings.json'))
+        mock_ctypes.windll.user32.MessageBoxW.assert_not_called()
+        with patch.object(settings_mod, '_S', {}), patch.object(settings_mod, '_PROVIDER_SECTIONS', validated['providers']):
+            claude = settings_mod.get_provider_settings('claude')
+            codex = settings_mod.get_provider_settings('codex')
+        usage = {
+            'iguana_necktie': {'utilization': 30, 'resets_at': '2026-01-01T05:00:00Z'},
+            'five_hour': {'utilization': 10, 'resets_at': ''},
+            'seven_day': {'utilization': 20, 'resets_at': ''},
+        }
+        for provider, expected in ((claude, ['five_hour', 'seven_day']), (codex, ['seven_day', 'five_hour', 'iguana_necktie'])):
+            with self.subTest(provider=provider.provider_id):
+                result = _snapshot_to_dict(_snap(usage=usage), installations=[], popup_fields=provider.popup_fields)
+                self.assertEqual([bar['key'] for bar in result['usage']], expected)
+        self.assertEqual(codex.popup_fields, ['seven_day', '*'])
+        self.assertEqual(validated['providers']['codex']['popup_fields'], ['seven_day', '*'])
 
     @patch('usage_monitor.popup.POPUP_FIELDS', ['typo_field', 'seven_day'])
     @patch('usage_monitor.popup.elapsed_pct', return_value=None)
