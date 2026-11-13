@@ -5,9 +5,10 @@ import logging
 import threading
 import time
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
+from ...forecast import record_samples
 from .api import ProviderFetchResult
 
 __all__ = ['CacheSnapshot', 'UpdateResult', 'UsageCache']
@@ -37,6 +38,7 @@ class CacheSnapshot:
     refreshing: bool
     last_error: str | None
     version: int
+    history: dict[str, dict[str, Any]] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -54,11 +56,13 @@ class UsageCache:
         self._poll_interval = _setting(settings, 'POLL_INTERVAL', 180)
         self._poll_fast = _setting(settings, 'POLL_FAST', 120)
         self._max_backoff = _setting(settings, 'MAX_BACKOFF', 900)
+        self._forecast_chart = _setting(settings, 'FORECAST_CHART', False) is True
 
         self._lock = threading.Lock()
         self._state_lock = threading.Lock()
         self._profile_lock = threading.Lock()
         self._usage: dict[str, Any] = {}
+        self._history: dict[str, dict[str, Any]] = {}
         self._profile: dict[str, Any] | None = None
         self._last_success_time: float | None = None
         self._refreshing = False
@@ -110,6 +114,7 @@ class UsageCache:
                 refreshing=self._refreshing,
                 last_error=self._last_error,
                 version=self._version,
+                history=self._history,
             )
 
     def ensure_profile(self, *, bypass_rate_limit: bool = False) -> None:
@@ -178,7 +183,7 @@ class UsageCache:
             self._record_error_state(data, result.profile, result.recovery_attempted)
             return UpdateResult(data=data)
 
-        self._record_success(data, result.profile)
+        self._record_success(data, result.profile, recovery_attempted=result.recovery_attempted)
         return UpdateResult(data=data)
 
     def _record_error_state(
@@ -204,12 +209,14 @@ class UsageCache:
                 self._rate_limit_until = time.time() + delay
 
             self._store_profile_locked(profile)
+            if recovery_attempted or data.get('auth_error') or data.get('no_auth'):
+                self._history = {}
             if recovery_attempted:
                 self._recovery_attempted = True
             self._refreshing = False
             self._version += 1
 
-    def _record_success(self, data: dict[str, Any], profile: dict[str, Any] | None) -> None:
+    def _record_success(self, data: dict[str, Any], profile: dict[str, Any] | None, *, recovery_attempted: bool = False) -> None:
         with self._state_lock:
             self._consecutive_errors = 0
             self._last_error = None
@@ -217,22 +224,38 @@ class UsageCache:
             self._rate_limit_until = 0
             self._recovery_attempted = False
             self._store_profile_locked(profile)
+            # Recovery can preserve the pre-refresh profile when the account
+            # read after reauthentication is inconclusive. Only a normal
+            # cycle with fresh identity can attribute its quota samples.
+            if self._forecast_chart and not recovery_attempted and _account_uuid(profile):
+                self._history = record_samples(self._history, data, self._last_success_time)
+            else:
+                self._history = {}
             self._usage = data
             self._refreshing = False
             self._version += 1
 
     def _store_profile(self, profile: dict[str, Any] | None) -> None:
-        if profile is None:
-            return
         with self._state_lock:
+            if profile is None and not self._history:
+                return
             self._store_profile_locked(profile)
             self._version += 1
 
     def _store_profile_locked(self, profile: dict[str, Any] | None) -> None:
+        previous_uuid = _account_uuid(self._profile)
+        new_uuid = _account_uuid(profile)
+        if new_uuid is None or new_uuid != previous_uuid:
+            self._history = {}
         if profile is None:
             return
-        previous_uuid = (self._profile or {}).get('account', {}).get('uuid') if isinstance(self._profile, dict) else None
-        new_uuid = profile.get('account', {}).get('uuid') if profile else None
         if new_uuid != previous_uuid:
             self._recovery_attempted = False
         self._profile = profile
+
+
+def _account_uuid(profile: dict[str, Any] | None) -> str | None:
+    """Return the confirmed account fingerprint from the normalized profile."""
+    account = profile.get('account') if isinstance(profile, dict) else None
+    uuid = account.get('uuid') if isinstance(account, dict) else None
+    return uuid if isinstance(uuid, str) and uuid.strip() else None

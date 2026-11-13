@@ -154,6 +154,7 @@ The initial combined repository is a fresh integration rather than a merge commi
 | 2026-10-24 | Codex | `f5d982a49457899716a95e07db63c79d69dc2b77` | Manual shared port | Reject malformed enum types before set membership across all settings sections; preserve legacy utilization/reset defaults alongside generic reset snapshots |
 | 2026-11-13 | Claude | `302eb47ff62eb19e34675a771af56f3aede8fdc0` | Manual shared port | Opt-in work-hour pacing with provider overrides; shared elapsed-time scale for popup, tray, and alerts; current weekly guides retained when no schedule applies |
 | 2026-11-13 | Claude | `dd6b81fc9af00e427c172892bf0da762e0cb4344` | Partial shared port | Fit complete startup and updated tray titles within the Windows UTF-16 limit; retain existing tooltip content and independent field selection |
+| 2026-11-13 | Claude | `56bdbb43b83d377631fad0c621d45e438fbe6aac` | Manual shared port | Opt-in chart for the resolved top tray quota with per-provider and per-account memory history, popup exclusions, work-hour projection, and independent calendar ticks |
 
 ## Verification for the 2026-10-24 import
 

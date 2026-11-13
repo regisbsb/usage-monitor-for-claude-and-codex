@@ -58,6 +58,7 @@
 <div class="dev-controls">
     <select id="langSelect" title="Language"></select>
     <button onclick="loadPreset('full')">Full data</button>
+    <button onclick="loadPreset('forecast')">Usage forecast</button>
     <button onclick="loadPreset('minimal')">Minimal (next update)</button>
     <button onclick="loadPreset('error')">Error state</button>
     <button onclick="loadPreset('refreshing')">Refreshing (hours)</button>
@@ -144,6 +145,18 @@ const PRESETS = {
     },
 };
 
+PRESETS.forecast = {
+    ...PRESETS.full,
+    usage: PRESETS.full.usage.map((entry) => entry.suffix === '7 day' ? {
+        ...entry,
+        forecast: {
+            now_x: 0.55, measured_from: 0.18,
+            actual: [[0, 0], [0.18, 21], [0.3, 33], [0.42, 51], [0.55, 65]],
+            projection: [[0.55, 65], [0.85, 100]], runs_out: true,
+        },
+    } : entry),
+};
+
 const iframe = document.getElementById('popup');
 const langSelect = document.getElementById('langSelect');
 const win = () => iframe.contentWindow;
@@ -158,6 +171,7 @@ function buildTranslations(loc) {
     return {
         title: loc.popup_title, account: loc.account, email: loc.email, plan: loc.plan,
         usage: loc.usage, extra_usage: loc.extra_usage, claude_code: loc.claude_code, changelog: loc.changelog,
+        forecast_now: loc.forecast_now,
         refresh: loc.refresh,
         status_updated_s: loc.status_updated_s, status_updated: loc.status_updated,
         status_next_update: loc.status_next_update, status_refreshing: loc.status_refreshing,
@@ -185,6 +199,15 @@ function localizeReset(loc, reset) {
     return '';
 }
 
+function localizeForecast(loc, forecast) {
+    if (!forecast) return null;
+    return {
+        ...forecast,
+        ticks: [1, 2, 3, 4, 5, 6].map((day) => ({ x: day / 7 - 0.05, label: loc.weekdays[(day + 3) % 7] })),
+        summary: loc.forecast_runs_out.replace('{when}', loc.weekdays[3]),
+    };
+}
+
 // Build the data snapshot popup.js consumes from a preset + the active locale.
 function resolveData(name, loc) {
     const preset = PRESETS[name];
@@ -198,6 +221,7 @@ function resolveData(name, loc) {
         reset_text: localizeReset(loc, entry.reset),
         dividers: entry.dividers,
         marker_rel: entry.marker_rel,
+        forecast: localizeForecast(loc, entry.forecast),
     }));
 
     const extra = preset.extra ? {

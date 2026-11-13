@@ -50,7 +50,8 @@ class StubElement {
     }
     _classSet() { return new Set(this.className.split(/\s+/).filter(Boolean)); }
     addEventListener(name, callback) { this.listeners[name] = callback; }
-    setAttribute(name, value) { this[name] = value; }
+    setAttribute(name, value) { this[name === 'class' ? 'className' : name] = String(value); }
+    getAttribute(name) { return this[name === 'class' ? 'className' : name]; }
     click() { if (this.listeners.click) this.listeners.click(); }
     appendChild(node) { node.parentNode = this; this.children.push(node); return node; }
     append(...nodes) { for (const node of nodes) this.appendChild(node); }
@@ -83,9 +84,15 @@ class StubElement {
 
 globalThis.document = {
     createElement: (tag) => new StubElement(tag),
+    createElementNS: (_namespace, tag) => new StubElement(tag),
     body: new StubElement('body'),
 };
-globalThis.ResizeObserver = class { constructor() {} observe() {} };
+const observers = [];
+globalThis.ResizeObserver = class {
+    constructor(callback) { this.callback = callback; this.targets = new Set(); observers.push(this); }
+    observe(target) { this.targets.add(target); }
+    unobserve(target) { this.targets.delete(target); }
+};
 globalThis.requestAnimationFrame = (callback) => callback();
 '''
 
@@ -97,6 +104,19 @@ function makeEntry(overrides) {
         key: 'five_hour', label: '5h', pct_text: '0%', fill_pct: 0.0,
         warn: false, dividers: [], marker_rel: null, reset_text: '',
     }, overrides);
+}
+
+function makeForecast(overrides) {
+    return Object.assign({
+        actual: [[0, 0], [0.2, 20], [0.5, 50]], measured_from: 0.2, now_x: 0.5,
+        ticks: [{ x: 0.1, label: 'Fri' }, { x: 0.25, label: 'Sat' }],
+        projection: [[0.5, 50], [0.75, 75], [1, 100]], runs_out: false,
+        summary: 'At this pace: ~100% at reset',
+    }, overrides);
+}
+
+function forecastPaths(chart) {
+    return chart.children.filter((node) => node.tagName === 'path').map((node) => node.className);
 }
 '''
 
@@ -238,6 +258,107 @@ setTimeout(() => console.log(JSON.stringify({
             'disabled': False,
             'refreshing': False,
         })
+
+
+@unittest.skipUnless(_NODE, 'Node.js not available')
+class TestForecastChart(unittest.TestCase):
+    """Tests for the quota forecast renderer and its normal-bar fallback."""
+
+    def test_chart_replaces_bar_but_keeps_text_accessible(self):
+        result = _run_scenario('''
+translations = { forecast_now: 'Agora' };
+updateUsageBars([makeEntry({
+    key: 'seven_day', label: 'Weekly', pct_text: '50%', reset_text: 'Resets Thu',
+    forecast: makeForecast({ runs_out: true, summary: 'At this pace: empty ~Mon' }),
+})]);
+const entry = els.usageBars.children[0];
+const chart = entry.querySelector('.forecast-chart');
+console.log(JSON.stringify({
+    bar: !!entry.querySelector('.bar-container'),
+    label: entry.querySelector('.bar-label').textContent,
+    pct: entry.querySelector('.bar-pct').textContent,
+    reset: entry.querySelector('.reset-text').textContent,
+    summary: entry.querySelector('.forecast-summary').textContent,
+    paths: forecastPaths(chart),
+    localized: chart.children.some((node) => node.textContent === 'Agora'),
+    hidden: chart.getAttribute('aria-hidden'),
+}));
+''')
+        self.assertEqual(result, {
+            'bar': False, 'label': 'Weekly', 'pct': '50%', 'reset': 'Resets Thu',
+            'summary': 'At this pace: empty ~Mon', 'paths': ['assumed', 'actual', 'projection warn'],
+            'localized': True, 'hidden': 'true',
+        })
+
+    def test_missing_or_invalid_forecast_keeps_bar(self):
+        result = _run_scenario('''
+const payloads = [undefined, null, {}, makeForecast({ projection: [[1, Infinity]] })];
+console.log(JSON.stringify(payloads.map((forecast) => {
+    updateUsageBars([makeEntry({ forecast })]);
+    const entry = els.usageBars.children[0];
+    return { bar: !!entry.querySelector('.bar-container'), chart: !!entry.querySelector('.forecast-chart') };
+})));
+''')
+        self.assertEqual(result, [{'bar': True, 'chart': False}] * 4)
+
+    def test_update_and_resize_keep_same_chart(self):
+        result = _run_scenario('''
+updateUsageBars([makeEntry({ forecast: makeForecast() })]);
+const entry = els.usageBars.children[0];
+const chart = entry.querySelector('.forecast-chart');
+updateUsageBars([makeEntry({
+    label: 'Updated label', pct_text: '60%',
+    forecast: makeForecast({ projection: [], summary: 'Updated forecast' }),
+})]);
+const initialLine = chart.querySelector('.actual').getAttribute('d');
+chart.clientWidth = 200;
+const observer = observers.find((item) => item.targets.has(chart));
+observer.callback([{ target: chart }]);
+console.log(JSON.stringify({
+    same: els.usageBars.children[0] === entry && entry.querySelector('.forecast-chart') === chart,
+    label: entry.querySelector('.bar-label').textContent,
+    pct: entry.querySelector('.bar-pct').textContent,
+    summary: entry.querySelector('.forecast-summary').textContent,
+    resized: chart.querySelector('.actual').getAttribute('d') !== initialLine,
+    paths: forecastPaths(chart),
+}));
+''')
+        self.assertEqual(result, {
+            'same': True, 'label': 'Updated label', 'pct': '60%', 'summary': 'Updated forecast',
+            'resized': True, 'paths': ['assumed', 'actual'],
+        })
+
+    def test_removing_forecast_releases_resize_observer(self):
+        result = _run_scenario('''
+updateUsageBars([makeEntry({ key: 'seven_day', forecast: makeForecast() })]);
+const oldChart = els.usageBars.children[0].querySelector('.forecast-chart');
+updateUsageBars([makeEntry({ key: 'seven_day' })]);
+const bar = !!els.usageBars.children[0].querySelector('.bar-container');
+updateUsageBars([makeEntry({ key: 'seven_day', forecast: makeForecast({
+    actual: [[0, 0], [0.5, 50]], measured_from: 0.5,
+}) })]);
+const chart = els.usageBars.children[0].querySelector('.forecast-chart');
+updateUsageBars([]);
+console.log(JSON.stringify({
+    bar, newChart: chart !== oldChart, paths: forecastPaths(chart), removed: els.usageBars.children.length === 0,
+    detached: observers.every((observer) => !observer.targets.has(oldChart) && !observer.targets.has(chart)),
+}));
+''')
+        self.assertEqual(result, {
+            'bar': True, 'newChart': True, 'paths': ['assumed', 'projection'], 'removed': True, 'detached': True,
+        })
+
+    def test_queued_bar_animation_cannot_overwrite_newer_snapshot(self):
+        result = _run_scenario('''
+const frames = [];
+globalThis.requestAnimationFrame = (callback) => frames.push(callback);
+updateUsageBars([makeEntry({ forecast: makeForecast() })]);
+updateUsageBars([makeEntry({ fill_pct: 0.2 })]);
+updateUsageBars([makeEntry({ fill_pct: 0.7 })]);
+for (const frame of frames) frame();
+console.log(JSON.stringify(els.usageBars.children[0].querySelector('.bar-fill').style.width));
+''')
+        self.assertEqual(result, '70%')
 
 
 if __name__ == '__main__':

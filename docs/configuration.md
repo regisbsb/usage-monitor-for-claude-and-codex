@@ -117,6 +117,12 @@ Hours use the computer's local time and can be fractional. An end before the sta
 
 The popup and tray markers, warning colors, and time-aware alerts follow the same working-time scale. Popup dividers mark workday starts. Short or unmatched quotas and windows with no working time keep wall-clock pacing and the existing guides. The schedule does not change when quotas reset or when either provider polls.
 
+### Usage forecast chart
+
+Set `forecast_chart` to `true` under a provider to replace its top tray quota's popup bar with a chart. It defaults to `false` and can also be set as a shared default. The quota must be visible in the popup and have a known duration, reset time, and confirmed account samples; otherwise it keeps its normal bar.
+
+The chart shows observed usage and an estimate at the current pace. It follows work-hour pacing when configured. Readings stay in memory and are kept separately by provider and account; nothing is saved to disk or exposed through the status API.
+
 ## Provider polling
 
 Each provider accepts its own polling values:

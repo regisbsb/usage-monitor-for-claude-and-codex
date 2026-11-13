@@ -72,7 +72,7 @@ _VALID_TIME_FORMATS = frozenset({'24h', '12h'})
 _VALID_ICON_STYLES = frozenset({'number+bars', 'numbers'})
 _COMMAND_KEYS = frozenset({'on_double_click_command', 'on_reset_command', 'on_startup_command', 'on_threshold_command'})
 _BOOL_KEYS = frozenset({
-    'alert_time_aware', 'auto_update_codex_cli', 'enabled',
+    'alert_time_aware', 'auto_update_codex_cli', 'enabled', 'forecast_chart',
     'notify_claude_update', 'notify_codex_update', 'status_server_enabled',
 })
 _STRING_LIST_KEYS = frozenset({'tooltip_fields', 'compact_hide'})
@@ -619,6 +619,7 @@ class ProviderSettings:
     update_interval: int
     values: dict[str, Any]
     work_schedule: WorkSchedule | None = None
+    forecast_chart: bool = False
 
     def alert_thresholds(self, variant_key: str) -> list[float]:
         """Return provider-specific thresholds with the shared fallback chain."""
@@ -678,4 +679,5 @@ def get_provider_settings(provider_id: str) -> ProviderSettings:
         update_interval=values.get('codex_update_interval', 86400),
         values=values,
         work_schedule=parse_work_schedule(schedule, None if fields is None else tuple(fields)) if schedule is not None else None,
+        forecast_chart=values.get('forecast_chart', False),
     )

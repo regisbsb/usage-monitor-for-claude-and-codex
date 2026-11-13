@@ -6,6 +6,7 @@ let popupPinned = false;
 let compactHide = [];
 let lastData = null;
 let refreshPending = false;
+let usageRenderRevision = 0;
 
 /**
  * Set CSS custom properties for theme colors and inject translation strings.
@@ -204,9 +205,7 @@ function updateData(data) {
     const usage = (data.usage || []).filter((entry) => !compactHidden(entry.key));
     const hasUsage = !!usage.length;
     els.usageSection.classList.toggle('visible', hasUsage);
-    if (hasUsage) {
-        updateUsageBars(usage);
-    }
+    updateUsageBars(usage);
 
     const hasExtra = !!data.extra;
     const extraVisible = hasExtra && !compactHidden('extra_usage');
@@ -355,26 +354,52 @@ function formatCountdown(totalSeconds) {
 }
 
 function updateUsageBars(entries) {
-    // Rebuild whenever the field set changes, not only the count - after an
-    // account switch the same number of bars can carry different quotas, and
-    // an in-place update would show the new values under the old labels.
-    const bars = els.usageBars.children;
-    const sameFields = entries.length === bars.length
-        && entries.every((entry, i) => bars[i].dataset.key === entry.key);
+    const revision = ++usageRenderRevision;
+    // The quota set or presentation can change independently of the count.
+    const current = els.usageBars.children;
+    const forecasts = entries.map((entry) => validForecast(entry.forecast) ? entry.forecast : null);
+    const sameEntries = entries.length === current.length && entries.every((entry, i) =>
+        current[i].dataset.key === entry.key && current[i].classList.contains('chart-entry') === !!forecasts[i]);
 
-    if (!sameFields) {
-        els.usageBars.replaceChildren(...entries.map(createBarElement));
+    if (!sameEntries) {
+        for (const node of current) {
+            const svg = node.querySelector('.forecast-chart');
+            if (svg) forecastResizeObserver.unobserve(svg);
+        }
+        const nodes = entries.map((entry, i) => forecasts[i] ? createForecastElement(entry, forecasts[i]) : createBarElement(entry));
+        els.usageBars.replaceChildren(...nodes);
+        // A newer snapshot may update or replace these nodes before the frame runs.
         requestAnimationFrame(() => {
-            for (let i = 0; i < entries.length; i++) {
-                els.usageBars.children[i].querySelector('.bar-fill').style.width =
-                    `${entries[i].fill_pct * 100}%`;
+            if (revision !== usageRenderRevision) return;
+            for (const [i, node] of nodes.entries()) {
+                const fill = node.querySelector('.bar-fill');
+                if (fill) fill.style.width = `${entries[i].fill_pct * 100}%`;
             }
         });
     } else {
         for (let i = 0; i < entries.length; i++) {
-            updateBarElement(els.usageBars.children[i], entries[i]);
+            const node = current[i];
+            node.querySelector('.bar-label').textContent = entries[i].label;
+            if (forecasts[i]) {
+                updateForecastElement(node, entries[i], forecasts[i]);
+            } else {
+                updateBarElement(node, entries[i]);
+            }
         }
     }
+}
+
+function createEntryHeader(entry) {
+    const header = document.createElement('div');
+    header.className = 'bar-header';
+    const label = document.createElement('span');
+    label.className = 'bar-label';
+    label.textContent = entry.label;
+    const pct = document.createElement('span');
+    pct.className = 'bar-pct';
+    pct.textContent = entry.pct_text;
+    header.append(label, pct);
+    return header;
 }
 
 function createBarElement(entry) {
@@ -382,15 +407,7 @@ function createBarElement(entry) {
     div.className = 'usage-entry';
     div.dataset.key = entry.key;
 
-    const header = document.createElement('div');
-    header.className = 'bar-header';
-    const label = document.createElement('span');
-    label.textContent = entry.label;
-    const pct = document.createElement('span');
-    pct.className = 'bar-pct';
-    pct.textContent = entry.pct_text;
-    header.append(label, pct);
-
+    const header = createEntryHeader(entry);
     const container = document.createElement('div');
     container.className = 'bar-container';
     const fill = document.createElement('div');
@@ -464,6 +481,130 @@ function updateBarElement(div, entry) {
     } else if (resetEl) {
         resetEl.remove();
     }
+}
+
+const SVG_NS = 'http://www.w3.org/2000/svg';
+const forecastResizeObserver = new ResizeObserver((entries) => {
+    for (const { target } of entries) drawForecast(target, target.forecast);
+});
+
+/** Keep the normal bar if the forecast payload is absent or incomplete. */
+function validForecast(forecast) {
+    const fraction = (x) => Number.isFinite(x) && x >= 0 && x <= 1;
+    const point = (pair) => Array.isArray(pair) && fraction(pair[0])
+        && Number.isFinite(pair[1]) && pair[1] >= 0 && pair[1] <= 100;
+    return forecast && fraction(forecast.now_x) && fraction(forecast.measured_from)
+        && Array.isArray(forecast.actual) && forecast.actual.length >= 2 && forecast.actual.every(point)
+        && Array.isArray(forecast.projection) && forecast.projection.every(point)
+        && Array.isArray(forecast.ticks) && forecast.ticks.every((tick) => tick && fraction(tick.x));
+}
+
+function svgElement(tag, attributes) {
+    const element = document.createElementNS(SVG_NS, tag);
+    for (const [name, value] of Object.entries(attributes)) {
+        element.setAttribute(name, value);
+    }
+    return element;
+}
+
+function createForecastElement(entry, forecast) {
+    const div = document.createElement('div');
+    div.className = 'usage-entry chart-entry';
+    div.dataset.key = entry.key;
+
+    // Header and footer carry the same quota information as the visual.
+    const chart = svgElement('svg', { class: 'forecast-chart', 'aria-hidden': 'true' });
+    const footer = document.createElement('div');
+    footer.className = 'chart-footer';
+    const reset = document.createElement('span');
+    reset.className = 'reset-text';
+    const summary = document.createElement('span');
+    summary.className = 'forecast-summary';
+    footer.append(reset, summary);
+    div.append(createEntryHeader(entry), chart, footer);
+
+    updateForecastElement(div, entry, forecast);
+    forecastResizeObserver.observe(chart);
+    return div;
+}
+
+function updateForecastElement(div, entry, forecast) {
+    const svg = div.querySelector('.forecast-chart');
+    svg.forecast = forecast;
+    div.querySelector('.bar-pct').textContent = entry.pct_text;
+    div.querySelector('.reset-text').textContent = entry.reset_text;
+    div.querySelector('.forecast-summary').textContent = forecast.summary || '';
+    drawForecast(svg, forecast);
+}
+
+/**
+ * Draw utilization (y) over the wall-clock quota window (x). The dotted line
+ * before the first reading is an estimate; the dashed line beyond now is the
+ * projection. Recalculate in CSS pixels when the chart is resized.
+ */
+function drawForecast(svg, forecast) {
+    const width = svg.clientWidth || 308;
+    const height = svg.clientHeight || 80;
+    const left = 30;
+    const right = Math.max(left + 1, width - 4);
+    const top = 5;
+    const bottom = Math.max(top + 1, height - 16);
+    const plotWidth = right - left;
+    const plotHeight = bottom - top;
+    const px = (x) => left + x * plotWidth;
+    const py = (y) => bottom - (y / 100) * plotHeight;
+    const path = (points) => points.map(([x, y], i) => `${i ? 'L' : 'M'}${px(x).toFixed(1)},${py(y).toFixed(1)}`).join(' ');
+    const nowX = px(forecast.now_x);
+    const children = [];
+    children.push(svgElement('rect', {
+        class: forecast.runs_out ? 'ahead warn' : 'ahead',
+        x: nowX, y: top, width: right - nowX, height: plotHeight,
+    }));
+
+    for (const pct of [0, 50, 100]) {
+        const y = py(pct);
+        children.push(svgElement('line', { class: pct === 100 ? 'limit' : 'grid', x1: left, x2: right, y1: y, y2: y }));
+        const label = svgElement('text', { class: 'axis-text', x: left - 5, y: y + 3.5, 'text-anchor': 'end' });
+        label.textContent = `${pct}%`;
+        children.push(label);
+    }
+
+    for (const [index, tick] of forecast.ticks.entries()) {
+        const x = px(tick.x);
+        children.push(svgElement('line', { class: 'grid', x1: x, x2: x, y1: top, y2: bottom }));
+        const nextX = px(forecast.ticks[index + 1]?.x ?? 1);
+        const labelX = (x + nextX) / 2;
+        // Avoid labels overlapping the Now marker or the right edge.
+        if (tick.label && Math.abs(labelX - nowX) > 26 && nextX - x > 24 && labelX < right - 8) {
+            const label = svgElement('text', { class: 'axis-text', x: labelX, y: height - 3, 'text-anchor': 'middle' });
+            label.textContent = tick.label;
+            children.push(label);
+        }
+    }
+
+    children.push(svgElement('line', { class: 'now', x1: nowX, x2: nowX, y1: top, y2: bottom }));
+    const nowLabel = svgElement('text', {
+        class: 'axis-text', x: Math.min(nowX, right - 12), y: height - 3, 'text-anchor': 'middle',
+    });
+    nowLabel.textContent = translations.forecast_now;
+    children.push(nowLabel);
+
+    const firstMeasured = forecast.actual.findIndex(([x]) => x >= forecast.measured_from);
+    if (firstMeasured > 0) {
+        children.push(svgElement('path', { class: 'assumed', d: path(forecast.actual.slice(0, firstMeasured + 1)) }));
+    }
+    if (firstMeasured >= 0 && firstMeasured < forecast.actual.length - 1) {
+        children.push(svgElement('path', { class: 'actual', d: path(forecast.actual.slice(firstMeasured)) }));
+    }
+
+    if (forecast.projection.length) {
+        const warnClass = forecast.runs_out ? ' warn' : '';
+        children.push(svgElement('path', { class: `projection${warnClass}`, d: path(forecast.projection) }));
+        const [endX, endY] = forecast.projection[forecast.projection.length - 1];
+        children.push(svgElement('circle', { class: `end-dot${warnClass}`, cx: px(endX), cy: py(endY), r: 3 }));
+    }
+
+    svg.replaceChildren(...children);
 }
 
 // Report content height changes to the host (pywebview or dev.html iframe parent).

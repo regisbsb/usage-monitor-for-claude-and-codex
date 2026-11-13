@@ -8,6 +8,8 @@ For each enabled provider, the app processes the account/profile information and
 
 Raw provider responses are kept in memory only as needed by the running process. The app does not persist them.
 
+The optional forecast chart keeps recent quota readings in memory for the confirmed account of each enabled provider. The monitor does not persist this history or include it in the local status API.
+
 ## Claude provider
 
 The Claude provider reads `.credentials.json` from the selected Claude configuration directory. The directory is selected by `--claude-config-dir`, `CLAUDE_CONFIG_DIR`, or the default `~/.claude`.

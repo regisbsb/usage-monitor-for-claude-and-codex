@@ -14,6 +14,7 @@ import json
 import threading
 import time
 import webbrowser
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -21,7 +22,10 @@ import webview  # type: ignore[import-untyped]  # no type stubs available
 
 from . import __version__
 from .claude_cli import CHANGELOG_URL, find_installations
-from .formatting import divider_positions, elapsed_pct, expand_popup_fields, field_period, format_credits, popup_label, time_until
+from .forecast import usage_forecast
+from .formatting import (
+    divider_positions, elapsed_pct, expand_popup_fields, field_period, format_credits, popup_label, resolve_display_fields, time_until,
+)
 from .i18n import T
 from .pacing import WorkSchedule
 from .settings import BAR_BG, BAR_DIVIDER, BAR_FG, BAR_FG_WARN, BAR_MARKER, BG, COMPACT_HIDE, FG, FG_DIM, FG_HEADING, FG_LINK, POPUP_FIELDS
@@ -94,6 +98,7 @@ def _usage_entries(
 def _snapshot_to_dict(
     snap: CacheSnapshot, installations: list[dict[str, str]] | None = None, next_poll_time: float | None = None,
     popup_fields: list[str] | None = None, *, work_schedule: WorkSchedule | None = None,
+    forecast_icon_fields: list[str] | None = None,
 ) -> dict[str, Any]:
     """Convert a CacheSnapshot to a JSON-serializable dict for the popup JS.
 
@@ -120,6 +125,10 @@ def _snapshot_to_dict(
     # Usage bars
     usage = []
     if snap.usage:
+        forecast_field = None
+        if forecast_icon_fields is not None:
+            top = resolve_display_fields(forecast_icon_fields, snap.usage, 2)[0]
+            forecast_field = top.split(':', 1)[0] if top else None
         for label, entry, period, field in _usage_entries(snap.usage, popup_fields):
             if not entry or entry.get('utilization') is None:
                 continue
@@ -139,6 +148,12 @@ def _snapshot_to_dict(
                 'dividers': divider_positions(resets_at, period, field=field, work_schedule=work_schedule) if period else [],
                 'marker_rel': marker_rel,
             })
+            if field == forecast_field:
+                history = getattr(snap, 'history', {})
+                if field in history:
+                    chart = usage_forecast(field, snap.usage, history, datetime.now(timezone.utc), work_schedule=work_schedule)
+                    if chart is not None:
+                        usage[-1]['forecast'] = chart
 
     # Extra usage
     extra = None
@@ -204,7 +219,7 @@ def _init_config(
     snap: CacheSnapshot, next_poll_time: float | None = None, *,
     title: str | None = None, compact_hide: list[str] | None = None,
     popup_fields: list[str] | None = None, installations: list[dict[str, str]] | None = None,
-    cli_label: str | None = None, work_schedule: WorkSchedule | None = None,
+    cli_label: str | None = None, work_schedule: WorkSchedule | None = None, forecast_icon_fields: list[str] | None = None,
 ) -> dict[str, Any]:
     """Build the config object passed to JS ``init()`` after the page loads."""
     return {
@@ -218,6 +233,7 @@ def _init_config(
             'claude_code': cli_label or T['claude_code'], 'changelog': T['changelog'],
             'pin_popup': T['pin_popup'], 'unpin_popup': T['unpin_popup'],
             'refresh': T['refresh'],
+            'forecast_now': T['forecast_now'],
             'status_updated_s': T['status_updated_s'], 'status_updated': T['status_updated'],
             'status_next_update': T['status_next_update'], 'status_refreshing': T['status_refreshing'],
             'duration_hm': T['duration_hm'], 'duration_m': T['duration_m'], 'duration_s': T['duration_s'],
@@ -226,6 +242,7 @@ def _init_config(
         'compact_hide': COMPACT_HIDE if compact_hide is None else compact_hide,
         'data': _snapshot_to_dict(
             snap, installations=installations, next_poll_time=next_poll_time, popup_fields=popup_fields, work_schedule=work_schedule,
+            forecast_icon_fields=forecast_icon_fields,
         ),
     }
 
@@ -381,6 +398,7 @@ class UsagePopup:
             next_poll_time=next_poll_time,
             popup_fields=settings.popup_fields if settings is not None else None,
             work_schedule=settings.work_schedule if settings is not None else None,
+            forecast_icon_fields=settings.icon_fields if settings is not None and settings.forecast_chart else None,
         )
 
     def _on_loaded(self) -> None:
@@ -396,6 +414,7 @@ class UsagePopup:
             installations=self._find_installations(),
             cli_label=f'{provider.display_name} CLI' if provider is not None else None,
             work_schedule=settings.work_schedule if settings is not None else None,
+            forecast_icon_fields=settings.icon_fields if settings is not None and settings.forecast_chart else None,
         )
         self._window.evaluate_js(f'init({json.dumps(config)})')
 

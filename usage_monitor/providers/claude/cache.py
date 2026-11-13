@@ -4,9 +4,10 @@ from __future__ import annotations
 import logging
 import threading
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Mapping
 
+from ...forecast import record_samples
 from .api import ClaudeAPI
 from .claude_cli import ClaudeCLI, RefreshResult
 
@@ -23,6 +24,7 @@ class CacheSnapshot:
     refreshing: bool
     last_error: str | None
     version: int
+    history: dict[str, dict[str, Any]] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -41,10 +43,12 @@ class UsageCache:
         self._poll_interval = _positive_setting(settings, "poll_interval", 180)
         self._poll_fast = _positive_setting(settings, "poll_fast", 120)
         self._max_backoff = _positive_setting(settings, "max_backoff", 900)
+        self._forecast_chart = _setting(settings, "forecast_chart", False) is True
         self._lock = threading.Lock()
         self._state_lock = threading.Lock()
         self._profile_lock = threading.Lock()
         self._usage: dict[str, Any] = {}
+        self._history: dict[str, dict[str, Any]] = {}
         self._usage_token: str | None = None
         self._profile: dict[str, Any] | None = None
         self._profile_token: str | None = None
@@ -98,6 +102,7 @@ class UsageCache:
                 refreshing=self._refreshing,
                 last_error=self._last_error,
                 version=self._version,
+                history=self._history,
             )
 
     def ensure_profile(self, *, bypass_rate_limit: bool = False) -> None:
@@ -131,8 +136,16 @@ class UsageCache:
         profile = self._api.fetch_profile(token)
         # A credential rewrite during the HTTP request makes the result stale.
         if self._api.read_access_token() != token:
+            with self._state_lock:
+                if self._history:
+                    self._history = {}
+                    self._version += 1
             return
         with self._state_lock:
+            if self._history:
+                uuid = _account_uuid(profile)
+                if self._profile_token != token or uuid is None or uuid != _account_uuid(self._profile):
+                    self._history = {}
             if profile is not None:
                 if self._usage and self._usage_token != token:
                     self._usage = {}
@@ -157,6 +170,10 @@ class UsageCache:
             return UpdateResult(data=None)
 
         token = self._api.read_access_token()
+        if self._history and self._usage_token != token:
+            with self._state_lock:
+                self._history = {}
+                self._version += 1
         if self._last_failed_token is not None:
             if token == self._last_failed_token:
                 return UpdateResult(data=None)
@@ -196,6 +213,7 @@ class UsageCache:
         # Never publish data for credentials that changed while in flight.
         if self._api.read_access_token() != token:
             with self._state_lock:
+                self._history = {}
                 self._refreshing = False
                 self._version += 1
             return UpdateResult(data=None, token=token)
@@ -229,6 +247,8 @@ class UsageCache:
 
     def _record_error(self, data: dict[str, Any], *, count: bool = True) -> None:
         with self._state_lock:
+            if data.get("auth_error") or data.get("no_auth"):
+                self._history = {}
             if count:
                 self._consecutive_errors += 1
             error = str(data["error"])
@@ -257,10 +277,21 @@ class UsageCache:
             if self._profile_token != token:
                 self._profile = None
                 self._profile_token = None
+            if self._forecast_chart and token is not None and _account_uuid(self._profile):
+                self._history = record_samples(self._history if token == self._usage_token else {}, data, self._last_success_time)
+            else:
+                self._history = {}
             self._usage = data
             self._usage_token = token
             self._refreshing = False
             self._version += 1
+
+
+def _account_uuid(profile: dict[str, Any] | None) -> str | None:
+    """Return a confirmed Claude identity from the already fetched profile."""
+    account = profile.get("account") if isinstance(profile, dict) else None
+    uuid = account.get("uuid") if isinstance(account, dict) else None
+    return uuid if isinstance(uuid, str) and uuid.strip() else None
 
 
 def _setting(settings: Any, name: str, default: Any) -> Any:
