@@ -242,8 +242,9 @@ footer {
         white-space: nowrap;
     }
 
-    & > #refreshBtn {
-        flex: 0 0 auto;
+    & > #refreshControl { flex: 0 0 auto; }
+
+    & #refreshBtn {
         border: 0;
         padding: 0;
         color: inherit;

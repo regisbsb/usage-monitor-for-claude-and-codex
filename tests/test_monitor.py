@@ -65,13 +65,27 @@ class TestManualRefresh(unittest.TestCase):
         thread.assert_called_once_with(target=monitor.refresh_now, daemon=True)
         thread.return_value.start.assert_called_once_with()
 
-    def test_worker_forwards_force_to_update(self) -> None:
+    def test_worker_uses_manual_cache_update(self) -> None:
         monitor = _make_monitor()
+        result = SimpleNamespace(data={})
+        monitor.cache.update.return_value = result
 
-        with patch.object(monitor, 'update') as update:
+        with patch.object(monitor, '_apply_update') as apply_update:
             self.assertTrue(monitor.refresh_now())
 
-        update.assert_called_once_with(force=True)
+        monitor.cache.update.assert_called_once_with(manual=True)
+        apply_update.assert_called_once_with(result)
+        self.assertFalse(monitor._manual_refresh_active)
+
+    def test_worker_does_not_apply_a_deferred_refresh(self) -> None:
+        monitor = _make_monitor()
+        monitor.cache.update.return_value = SimpleNamespace(data=None)
+
+        with patch.object(monitor, '_apply_update') as apply_update:
+            self.assertFalse(monitor.refresh_now())
+
+        monitor.cache.update.assert_called_once_with(manual=True)
+        apply_update.assert_not_called()
         self.assertFalse(monitor._manual_refresh_active)
 
     def test_duplicate_requests_coalesce_per_provider(self) -> None:
@@ -84,10 +98,11 @@ class TestManualRefresh(unittest.TestCase):
         codex_waiting = threading.Event()
         duplicate_results: list[bool] = []
 
-        def blocked_refresh(started: threading.Event, *, force: bool) -> None:
-            self.assertTrue(force)
+        def blocked_refresh(started: threading.Event, *, manual: bool) -> Any:
+            self.assertTrue(manual)
             started.set()
             self.assertTrue(release.wait(2))
+            return SimpleNamespace(data=None)
 
         claude_wait = claude._manual_refresh_condition.wait
         codex_wait = codex._manual_refresh_condition.wait
@@ -96,8 +111,8 @@ class TestManualRefresh(unittest.TestCase):
             waiting.set()
             return wait()
 
-        with patch.object(claude, 'update', side_effect=lambda *, force: blocked_refresh(claude_started, force=force)) as claude_update, \
-             patch.object(codex, 'update', side_effect=lambda *, force: blocked_refresh(codex_started, force=force)) as codex_update, \
+        with patch.object(claude.cache, 'update', side_effect=lambda *, manual: blocked_refresh(claude_started, manual=manual)) as claude_update, \
+             patch.object(codex.cache, 'update', side_effect=lambda *, manual: blocked_refresh(codex_started, manual=manual)) as codex_update, \
              patch.object(claude._manual_refresh_condition, 'wait', side_effect=lambda: observed_wait(claude_waiting, claude_wait)), \
              patch.object(codex._manual_refresh_condition, 'wait', side_effect=lambda: observed_wait(codex_waiting, codex_wait)):
             claude_worker = threading.Thread(target=claude.refresh_now)
@@ -123,8 +138,8 @@ class TestManualRefresh(unittest.TestCase):
             self.assertFalse(claude_duplicate.is_alive())
             self.assertFalse(codex_duplicate.is_alive())
 
-        claude_update.assert_called_once_with(force=True)
-        codex_update.assert_called_once_with(force=True)
+        claude_update.assert_called_once_with(manual=True)
+        codex_update.assert_called_once_with(manual=True)
         self.assertEqual(duplicate_results, [False, False])
 
 

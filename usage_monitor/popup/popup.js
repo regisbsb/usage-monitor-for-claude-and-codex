@@ -69,16 +69,15 @@ function init(config) {
 function setupRefreshButton() {
     const refreshBtn = document.getElementById('refreshBtn');
     refreshBtn.setAttribute('aria-label', translations.refresh);
-    refreshBtn.title = translations.refresh;
+    renderRefreshButton();
 
     refreshBtn.addEventListener('click', async () => {
-        if (refreshPending) {
+        if (refreshBtn.disabled) {
             return;
         }
 
         refreshPending = true;
-        refreshBtn.disabled = true;
-        refreshBtn.classList.add('refreshing');
+        renderRefreshButton();
         try {
             const data = await pywebview.api.refresh();
             updateData(data);
@@ -86,10 +85,34 @@ function setupRefreshButton() {
             // The existing snapshot stays visible when a manual refresh fails.
         } finally {
             refreshPending = false;
-            refreshBtn.disabled = false;
-            refreshBtn.classList.remove('refreshing');
+            renderRefreshButton();
         }
     });
+}
+
+/** Show why a manual refresh is waiting and reenable it when the wait expires. */
+function renderRefreshButton() {
+    const refreshBtn = document.getElementById('refreshBtn');
+    const control = document.getElementById('refreshControl');
+    if (!refreshBtn) return;
+
+    const seconds = Math.ceil((statusState.manualRefreshRetryAt || 0) - Date.now() / 1000);
+    const waitMessages = {
+        reset: translations.refresh_deferred_reset,
+        cooldown: translations.refresh_cooldown,
+        backoff: translations.refresh_backoff,
+    };
+    const waitMessage = waitMessages[statusState.manualRefreshReason];
+    let title = translations.refresh;
+    if (seconds > 0 && waitMessage) {
+        title = waitMessage.replace('{duration}', formatCountdown(seconds));
+    } else if (refreshPending) {
+        title = translations.status_refreshing || title;
+    }
+    refreshBtn.title = title;
+    if (control) control.title = title; // A disabled button may not receive hover events.
+    refreshBtn.disabled = refreshPending || seconds > 0;
+    refreshBtn.classList.toggle('refreshing', refreshPending);
 }
 
 function setupPinButton() {
@@ -255,6 +278,8 @@ function updateStatus(status) {
     }
 
     if (!status) {
+        statusState = {};
+        renderRefreshButton();
         els.statusSection.classList.remove('visible');
         return;
     }
@@ -271,13 +296,17 @@ function updateStatus(status) {
             error: status.error,
         };
         els.statusSection.classList.toggle('error', !!status.error);
-        tickStatusText();
-        textTimerId = setInterval(tickStatusText, 1000);
     } else {
         statusState = {};
         els.statusText.textContent = status.text || '';
         els.statusText.title = status.is_error ? (status.text || '') : '';
         els.statusSection.classList.toggle('error', !!status.is_error);
+    }
+    statusState.manualRefreshReason = status.manual_refresh_reason;
+    statusState.manualRefreshRetryAt = status.manual_refresh_retry_at;
+    tickStatusText();
+    if (status.last_success_time !== undefined || statusState.manualRefreshRetryAt) {
+        textTimerId = setInterval(tickStatusText, 1000);
     }
 }
 
@@ -289,6 +318,7 @@ function updateStatus(status) {
  * + refreshing or error appended with · separator
  */
 function tickStatusText() {
+    renderRefreshButton();
     if (!statusState.lastSuccessTime) return;
 
     const now = Date.now() / 1000;

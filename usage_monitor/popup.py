@@ -213,6 +213,12 @@ def _snapshot_to_dict(
             'error': snap.last_error[:120] if snap.last_error else None,
         }
 
+    reason = getattr(snap, 'manual_refresh_reason', None)
+    retry_at = getattr(snap, 'manual_refresh_retry_at', None)
+    if reason is not None and retry_at is not None:
+        status['manual_refresh_reason'] = reason
+        status['manual_refresh_retry_at'] = retry_at
+
     return {
         'profile': profile,
         'usage': usage,
@@ -241,6 +247,8 @@ def _init_config(
             'pin_popup': T['pin_popup'], 'unpin_popup': T['unpin_popup'],
             'refresh': T['refresh'],
             'forecast_now': T['forecast_now'],
+            'refresh_deferred_reset': T['refresh_deferred_reset'],
+            'refresh_cooldown': T['refresh_cooldown'], 'refresh_backoff': T['refresh_backoff'],
             'status_updated_s': T['status_updated_s'], 'status_updated': T['status_updated'],
             'status_next_update': T['status_next_update'], 'status_refreshing': T['status_refreshing'],
             'duration_hm': T['duration_hm'], 'duration_m': T['duration_m'], 'duration_s': T['duration_s'],
@@ -662,6 +670,7 @@ class UsagePopup:
         """Poll for data changes and push updates to the popup."""
         cached_installations = self._find_installations()
         last_next_poll_time = self.app._next_poll_time
+        last_refresh_state: tuple[str | None, float | None] = (None, None)
         while self._running:
             time.sleep(self._CHECK_MS / 1000)
             if not self._running:
@@ -669,7 +678,15 @@ class UsagePopup:
             try:
                 snap = self.app.cache.snapshot
                 next_poll_time = self.app._next_poll_time
-                if snap.version == self._last_version and next_poll_time == last_next_poll_time:
+                retry_at = getattr(snap, 'manual_refresh_retry_at', None)
+                refresh_state = (
+                    getattr(snap, 'manual_refresh_reason', None), round(retry_at) if retry_at is not None else None,
+                )
+                if (
+                    snap.version == self._last_version
+                    and next_poll_time == last_next_poll_time
+                    and refresh_state == last_refresh_state
+                ):
                     continue
                 if snap.version != self._last_version:
                     cached_installations = self._find_installations()
@@ -682,6 +699,7 @@ class UsagePopup:
                 # by the dedup check until the next data change.
                 self._last_version = snap.version
                 last_next_poll_time = next_poll_time
+                last_refresh_state = refresh_state
             except Exception:
                 # A transient failure (snapshot conversion, filesystem scan,
                 # one-off evaluate_js hiccup) must not end the update stream -

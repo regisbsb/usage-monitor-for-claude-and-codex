@@ -14,6 +14,7 @@ This is a fresh combined product derived from [Usage Monitor for Claude](https:/
 
 ### Fixed
 
+- Manual refreshes honor each provider's backoff and reset window, share in-flight polls, and prevent rapid repeat requests.
 - The Claude popup shows the customer-facing plan name when available and falls back to the internal plan type.
 - Long tray tooltips, including custom Claude configuration names and emoji, are shortened to fit Windows without interrupting updates.
 - Malformed `time_format` and `icon_style` arrays or objects are ignored with a settings warning instead of crashing startup, including in provider sections.

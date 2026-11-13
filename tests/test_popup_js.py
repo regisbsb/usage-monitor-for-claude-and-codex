@@ -98,6 +98,7 @@ globalThis.requestAnimationFrame = (callback) => callback();
 
 _SCENARIO_PRELUDE = r'''
 els = { usageBars: document.createElement('div') };
+document.getElementById = () => null;
 
 function makeEntry(overrides) {
     return Object.assign({
@@ -258,6 +259,43 @@ setTimeout(() => console.log(JSON.stringify({
             'refreshing': False,
             'title': 'Refresh',
             'ariaLabel': 'Refresh',
+        })
+
+    def test_wait_from_static_error_snapshot_blocks_click_then_expires(self):
+        result = _run_scenario('''
+const refreshBtn = document.createElement('button');
+const refreshControl = document.createElement('span');
+document.getElementById = (id) => ({ refreshBtn, refreshControl })[id];
+els.statusSection = document.createElement('footer');
+els.statusText = document.createElement('span');
+translations = {
+    refresh: 'Refresh', refresh_backoff: 'Rate limit: retry in {duration}', duration_s: '{s}s',
+};
+let calls = 0;
+let now = 100_000;
+Date.now = () => now;
+globalThis.pywebview = { api: { refresh: async () => { calls += 1; } } };
+updateData = () => {};
+setupRefreshButton();
+updateStatus({
+    text: 'Provider unavailable', is_error: true,
+    manual_refresh_reason: 'backoff', manual_refresh_retry_at: 115,
+});
+const waiting = { disabled: refreshBtn.disabled, title: refreshControl.title, status: els.statusText.textContent };
+refreshBtn.click();
+const callsWhileWaiting = calls;
+now = 115_000;
+tickStatusText();
+const enabled = !refreshBtn.disabled;
+refreshBtn.click();
+clearInterval(textTimerId);
+console.log(JSON.stringify({ waiting, enabled, callsWhileWaiting, calls }));
+''')
+        self.assertEqual(result, {
+            'waiting': {'disabled': True, 'title': 'Rate limit: retry in 15s', 'status': 'Provider unavailable'},
+            'enabled': True,
+            'callsWhileWaiting': 0,
+            'calls': 1,
         })
 
     def test_rejection_restores_button_without_replacing_data(self):

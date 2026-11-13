@@ -670,6 +670,28 @@ class TestRefreshBridge(unittest.TestCase):
         self.assertEqual(result['usage'][0]['pct_text'], '42%')
         self.assertEqual(result['status']['next_poll_time'], 1234.0)
 
+    def test_refresh_shares_cache_wait_reason_with_the_popup(self):
+        from usage_monitor.providers.codex.cache import CacheSnapshot as CodexSnapshot
+
+        app = MagicMock()
+        app.cache.snapshot = CodexSnapshot(
+            usage={}, profile=None, last_success_time=None, refreshing=False,
+            last_error='Rate limited', version=1, manual_refresh_reason='backoff', manual_refresh_retry_at=1234.0,
+        )
+        app.settings.popup_fields = []
+        app._next_poll_time = None
+        app.refresh_now.return_value = False
+
+        popup = object.__new__(UsagePopup)
+        popup.app = app
+        popup._find_installations = MagicMock(return_value=[])
+
+        status = _PopupApi(popup).refresh()['status']
+
+        self.assertEqual(status['text'], 'Rate limited')
+        self.assertEqual(status['manual_refresh_reason'], 'backoff')
+        self.assertEqual(status['manual_refresh_retry_at'], 1234.0)
+
     def test_refresh_uses_owning_provider_installations(self):
         app = MagicMock()
         app.cache.snapshot = _snap()

@@ -25,16 +25,13 @@ from .settings import ProviderSettings
 from .formatting import elapsed_pct, field_period, format_credits, format_tooltip, is_active_quota, parse_field_name, popup_label, resolve_display_fields
 from .i18n import T
 from .popup import UsagePopup
+from .refresh import RESET_BUFFER, reset_offsets
 from .notification_identity import show_notification
 from .tray_icon import create_icon_image, create_status_image, fit_tooltip, taskbar_uses_light_theme, watch_theme_change
 
 __all__ = ['ProviderMonitor', 'crash_log']
 
 _COMBINED_PROJECT_URL = 'https://github.com/regisbsb/usage-monitor-for-claude-and-codex'
-
-# Seconds after a reset at which to place the confirming poll.  A small buffer
-# absorbs minor timing differences (clocks, caches, server-side propagation).
-RESET_BUFFER = 5
 
 # Win32 tray mouse messages, delivered by the shell as the WM_NOTIFY lParam.
 # pystray natively acts only on WM_LBUTTONUP; WM_LBUTTONDBLCLK drives the
@@ -237,15 +234,17 @@ class ProviderMonitor:
         return True
 
     def refresh_now(self) -> bool:
-        """Run one forced provider refresh, coalescing concurrent manual requests.
+        """Run one manual provider refresh, coalescing concurrent requests.
 
         Returns
         -------
         bool
-            True when this call performed the refresh, or False when another
-            manual refresh for this provider satisfied this request.
+            True when a provider result was returned; False when a cooldown,
+            another request or shutdown made this refresh unnecessary.
         """
         with self._manual_refresh_condition:
+            if not self.running:
+                return False
             if self._manual_refresh_active:
                 while self._manual_refresh_active:
                     self._manual_refresh_condition.wait()
@@ -253,12 +252,15 @@ class ProviderMonitor:
             self._manual_refresh_active = True
 
         try:
-            self.update(force=True)
+            result = self.cache.update(manual=True)
+            if result.data is None or not self.running:
+                return False
+            self._apply_update(result)
+            return True
         finally:
             with self._manual_refresh_condition:
                 self._manual_refresh_active = False
                 self._manual_refresh_condition.notify_all()
-        return True
 
     def on_open_combined_project(self, icon: Any = None, item: Any = None) -> None:
         webbrowser.open(_COMBINED_PROJECT_URL)
@@ -521,7 +523,10 @@ class ProviderMonitor:
             confirmed account switch, where the freshly selected account
             has no polling history that those throttles need to protect.
         """
-        result = self.cache.update(force=force)
+        self._apply_update(self.cache.update(force=force))
+
+    def _apply_update(self, result: Any) -> None:
+        """Update tray and alert state for either kind of cache refresh."""
         if result.data is None:
             return
 
@@ -946,17 +951,7 @@ class ProviderMonitor:
 
     def _reset_offsets(self) -> list[float]:
         """Return seconds until each known reset, including overdue resets."""
-        now = datetime.now(timezone.utc)
-        offsets = []
-        for entry in self._last_response.values():
-            if not isinstance(entry, dict) or not entry.get('resets_at'):
-                continue
-            try:
-                reset_time = datetime.fromisoformat(entry['resets_at'])
-                offsets.append((reset_time - now).total_seconds())
-            except Exception:
-                continue
-        return offsets
+        return reset_offsets(self._last_response, datetime.now(timezone.utc))
 
     def _seconds_until_next_reset(self) -> float | None:
         """Return seconds until the earliest upcoming quota reset, or None."""

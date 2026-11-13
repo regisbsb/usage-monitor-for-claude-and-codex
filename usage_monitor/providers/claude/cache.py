@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 from typing import Any, Mapping
 
 from ...forecast import record_samples
+from ...refresh import ManualRefreshPolicy
 from .api import ClaudeAPI
 from .claude_cli import ClaudeCLI, RefreshResult
 
@@ -25,6 +26,8 @@ class CacheSnapshot:
     last_error: str | None
     version: int
     history: dict[str, dict[str, Any]] = field(default_factory=dict)
+    manual_refresh_reason: str | None = None
+    manual_refresh_retry_at: float | None = None
 
 
 @dataclass(frozen=True)
@@ -59,6 +62,7 @@ class UsageCache:
         self._consecutive_errors = 0
         self._last_failed_token: str | None = None
         self._rate_limit_until = 0.0
+        self._manual_refresh = ManualRefreshPolicy()
 
     @property
     def usage(self) -> dict[str, Any]:
@@ -95,6 +99,7 @@ class UsageCache:
     @property
     def snapshot(self) -> CacheSnapshot:
         with self._state_lock:
+            reason, retry_at = self._manual_refresh_wait(time.time())
             return CacheSnapshot(
                 usage=self._usage,
                 profile=self._profile,
@@ -103,6 +108,8 @@ class UsageCache:
                 last_error=self._last_error,
                 version=self._version,
                 history=self._history,
+                manual_refresh_reason=reason,
+                manual_refresh_retry_at=retry_at,
             )
 
     def ensure_profile(self, *, bypass_rate_limit: bool = False) -> None:
@@ -124,11 +131,19 @@ class UsageCache:
             with self._lock:
                 self._fetch_and_store_profile(self._api.read_access_token())
 
-    def update(self, *, force: bool = False) -> UpdateResult:
-        if not self._lock.acquire(blocking=False):
+    def update(self, *, force: bool = False, manual: bool = False) -> UpdateResult:
+        """Refresh usage, allowing manual requests to wait for a running poll.
+
+        Forced updates are reserved for confirmed account switches. Manual
+        refreshes may skip the scheduled cooldown, but recheck their own
+        limits and the provider backoff after acquiring the update lock.
+        """
+        if force and manual:
+            raise ValueError('Manual refresh cannot force an update')
+        if not self._lock.acquire(blocking=manual):
             return UpdateResult(data=None)
         try:
-            return self._update_locked(force=force)
+            return self._update_locked(force=force, manual=manual)
         finally:
             self._lock.release()
 
@@ -158,16 +173,34 @@ class UsageCache:
                 self._profile_token = None
             self._version += 1
 
-    def _update_locked(self, *, force: bool) -> UpdateResult:
+    def _manual_refresh_wait(self, now: float) -> tuple[str | None, float | None]:
+        """Read the refresh gate while holding the state lock."""
+        return self._manual_refresh.wait(
+            self._usage, now=now, monotonic_now=time.monotonic(), poll_fast=self._poll_fast, backoff_until=self._rate_limit_until,
+        )
+
+    def _finish_update_locked(self) -> None:
+        """Publish the end of a usage operation while holding the state lock."""
+        self._manual_refresh.last_completion = time.monotonic()
+        self._refreshing = False
+        self._version += 1
+
+    def _update_locked(self, *, force: bool, manual: bool) -> UpdateResult:
         now = time.time()
         if self._last_success_time is not None and now < self._last_success_time:
             self._last_success_time = now - self._poll_fast
         if self._rate_limit_until - now > self._max_backoff:
             self._rate_limit_until = now + self._max_backoff
-        if not force and self._last_success_time is not None and now - self._last_success_time < self._poll_fast:
+        if not (force or manual) and self._last_success_time is not None and now - self._last_success_time < self._poll_fast:
             return UpdateResult(data=None)
         if not force and now < self._rate_limit_until:
             return UpdateResult(data=None)
+
+        if manual:
+            with self._state_lock:
+                reason, _retry_at = self._manual_refresh_wait(now)
+                if reason is not None:
+                    return UpdateResult(data=None)
 
         token = self._api.read_access_token()
         if self._history and self._usage_token != token:
@@ -180,14 +213,16 @@ class UsageCache:
             self._last_failed_token = None
 
         with self._state_lock:
+            if manual and token:
+                # No token means no usage HTTP request and no manual allowance spent.
+                self._manual_refresh.last_manual_attempt = time.monotonic()
             self._refreshing = True
             self._version += 1
         try:
             return self._fetch_and_process(token)
         except Exception:
             with self._state_lock:
-                self._refreshing = False
-                self._version += 1
+                self._finish_update_locked()
             raise
 
     def _fetch_and_process(self, token: str | None) -> UpdateResult:
@@ -206,16 +241,14 @@ class UsageCache:
                 if token_refresh is None:
                     self._last_failed_token = token
             with self._state_lock:
-                self._refreshing = False
-                self._version += 1
+                self._finish_update_locked()
             return UpdateResult(data, token_refresh)
 
         # Never publish data for credentials that changed while in flight.
         if self._api.read_access_token() != token:
             with self._state_lock:
                 self._history = {}
-                self._refreshing = False
-                self._version += 1
+                self._finish_update_locked()
             return UpdateResult(data=None, token=token)
         self._record_success(data, token)
         return UpdateResult(data=data, token=token)
@@ -283,8 +316,7 @@ class UsageCache:
                 self._history = {}
             self._usage = data
             self._usage_token = token
-            self._refreshing = False
-            self._version += 1
+            self._finish_update_locked()
 
 
 def _account_uuid(profile: dict[str, Any] | None) -> str | None:

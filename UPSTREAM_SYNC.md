@@ -6,7 +6,7 @@ This repository combines two independently maintained source lines. Import chang
 
 | Source | Repository | Baseline head | Last reviewed SHA | Review status |
 |---|---|---|---|---|
-| Claude | https://github.com/jens-duttke/usage-monitor-for-claude | `3e2cfc3b2eb15e1f8b9b08e2b0d470750f84bad1` | `5cbccc5e6f20a03efbc6779cc3c6d8e621acdef2` | Selectively reviewed through 2026-10-23 upstream changes; exclusions already imported and remaining changes skipped |
+| Claude | https://github.com/jens-duttke/usage-monitor-for-claude | `3e2cfc3b2eb15e1f8b9b08e2b0d470750f84bad1` | `e73239c4929ace99f6f80d4bfab31484b229bc34` | Reviewed through standalone v1.27.0; five selected changes manually adapted |
 | Codex | https://github.com/ihor-sokoliuk/usage-monitor-for-codex | `cbd5996b38fa8bbf62a98034bc60e926bc3bed96` | `6deb0294bacbf2c02bd319cdcdb2dfdeaafa077d` | Selectively reviewed through 2026-10-23 upstream changes; three fixes imported and deferred work recorded below |
 
 Common ancestor: `f9224c2667ce7210464590d1e5e3f5d8637c8c69`.
@@ -70,6 +70,23 @@ Review each source independently:
 | 2026-10-24 | Claude | `14fdd6f14ef49a4686b6c820a8fb46e2f40c10ff` only ([PR #113](https://github.com/jens-duttke/usage-monitor-for-claude/pull/113)) | Targeted popup-exclusion contribution reviewed and manually ported; intervening commits not reviewed and both review cursors unchanged |
 | 2026-10-24 | Claude | `5f27127..5cbccc5` (4 commits) | Reviewed the complete range; popup exclusions match the existing targeted port, prepaid-only optimization and standalone release/credit documentation skipped |
 | 2026-10-24 | Codex | `cbd5996..6deb029` (95 commits: 90 inherited Claude commits and 5 Codex commits) | Reviewed the complete range against both existing provider implementations; manually ported enum validation, complete reset snapshots, and Codex CLI capture hardening; remaining changes classified below |
+| 2026-11-13 | Claude | `5cbccc5..e73239c` (11 commits) | Five changes manually adapted; weekly quota fallback already present, standalone process/release changes skipped, and MCP deferred |
+
+### Claude commits reviewed on 2026-11-13
+
+| Source SHA | Classification and result |
+|---|---|
+| `302eb47` | Shared work-hour pacing ported as an opt-in schedule with independent provider overrides and the existing default guides |
+| `45181f5` | Standalone contributor and PR merge instructions skipped |
+| `75e8f1c` | Missing session quota already promotes the next active tray quota and uses it for adaptive polling; popup exclusions remain independent of the tray |
+| `dd6b81f` | Windows tooltip limit ported; existing reset text, labels, and independent field selection retained |
+| `5454751` | Standalone v1.25.0 metadata skipped |
+| `56bdbb4` | Optional forecast chart ported with account-scoped history, the shared pacing scale, and calendar ticks |
+| `7c13da0` | MCP deferred; a combined version needs explicit provider selection, a combined Windows channel identity, and supervisor-owned startup and shutdown |
+| `0c91da2` | Standalone v1.26.0 metadata skipped |
+| `22b0644` | Claude plan label and popup details ported; raw profile field logging skipped |
+| `9961eff` | Manual refresh safeguards and wait feedback adapted to the existing independent tray and popup controls |
+| `e73239c` | Standalone v1.27.0 metadata skipped |
 
 ### Claude commits reviewed on 2026-10-24
 
@@ -156,6 +173,12 @@ The initial combined repository is a fresh integration rather than a merge commi
 | 2026-11-13 | Claude | `dd6b81fc9af00e427c172892bf0da762e0cb4344` | Partial shared port | Fit complete startup and updated tray titles within the Windows UTF-16 limit; retain existing tooltip content and independent field selection |
 | 2026-11-13 | Claude | `56bdbb43b83d377631fad0c621d45e438fbe6aac` | Manual shared port | Opt-in chart for the resolved top tray quota with per-provider and per-account memory history, popup exclusions, work-hour projection, and independent calendar ticks |
 | 2026-11-13 | Claude | `22b0644757978be665aa35092c442844d0f9d8a8` | Partial Claude port | Normalize the plan label and optional tooltip in the Claude provider; preserve Codex labels and omit upstream profile logging |
+| 2026-11-13 | Claude | `9961eff7c2458089f6b21623f2ce79cdf592a5f0` | Manual shared port | Distinct manual refresh gates per provider: coalesce with active operations, preserve backoff and reset alignment, and apply monotonic attempt limits; show popup wait reason |
+
+## Verification for the 2026-11-13 import
+
+- Native Windows full suite: 1,350 tests, 1,349 passing. The existing Store-backed Codex containment regression remains active and fails because the real interpreter and its descendant are outside the transport Job. It is unrelated to the five Claude ports.
+- Focused coverage includes provider-specific work schedules, UTF-16 tooltip limits, forecast rollover and account isolation, Claude plan display, and manual refresh timing, backoff, reset deferral, and concurrent polling. Pyright reported zero errors and warnings.
 
 ## Verification for the 2026-10-24 import
 

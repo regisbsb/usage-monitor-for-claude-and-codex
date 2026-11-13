@@ -137,7 +137,7 @@ Each provider accepts its own polling values:
 | `idle_pause` | `300` | Seconds before idle polling slows; `0` disables idle detection |
 | `idle_interval` | `900` | Minimum seconds between scheduled polls while idle or locked; an uncovered open popup keeps the normal cadence |
 
-`poll_fast` must not exceed `poll_interval`. Successful scheduled fetches respect that provider's `poll_fast` spacing. An explicit user click on **Refresh now** in a provider popup or tray menu is the narrow exception: it requests an immediate fetch only for that provider, using the same provider-specific authentication and transport path.
+`poll_fast` must not exceed `poll_interval`. Successful scheduled fetches respect that provider's `poll_fast` spacing. **Refresh now** can fetch earlier for the selected provider. It shares an in-flight poll, waits at least 15 seconds after a usage operation finishes, and makes at most one manual attempt per `poll_fast` interval. It also honors rate-limit backoff and waits through the protected reset window. A withheld request does not consume the manual allowance; the popup shows why refresh is unavailable.
 
 Each provider has its own cooldown, backoff, reset alignment, error streak, account-switch state, and manual-refresh request. A Claude refresh or backoff must not call, wake, reset, or delay Codex, and a Codex refresh or app-server restart must not call, wake, reset, or delay Claude.
 
