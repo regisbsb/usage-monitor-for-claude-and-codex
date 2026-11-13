@@ -16,7 +16,10 @@ from PIL import Image, ImageDraw, ImageFont
 
 from .settings import ICON_DARK, ICON_LIGHT, ICON_STYLE
 
-__all__ = ['load_font', 'taskbar_uses_light_theme', 'watch_theme_change', 'create_icon_image', 'create_status_image']
+__all__ = ['load_font', 'taskbar_uses_light_theme', 'watch_theme_change', 'fit_tooltip', 'create_icon_image', 'create_status_image']
+
+# NOTIFYICONDATAW.szTip reserves one of its 128 UTF-16 units for the terminator.
+_TOOLTIP_MAX_UNITS = 127
 
 # Theme registry
 THEME_REG_KEY = r'Software\Microsoft\Windows\CurrentVersion\Themes\Personalize'
@@ -33,6 +36,34 @@ MARKER_WIDTH = 4
 
 # Row height for the 'numbers' icon style - two rows split the canvas evenly.
 NUMBER_ROW_HEIGHT = 32
+
+
+def fit_tooltip(text: str) -> str:
+    """Fit a Windows tray title, dropping trailing lines before trimming the first.
+
+    Parameters
+    ----------
+    text : str
+        Complete tooltip text, including any prefix.
+
+    Returns
+    -------
+    str
+        The leading lines that fit, or the first line shortened without
+        cutting a supplementary character in half.
+    """
+    lines: list[str] = []
+    remaining = _TOOLTIP_MAX_UNITS
+    for line in text.split('\n'):
+        encoded = line.encode('utf-16-le', errors='surrogatepass')
+        units = len(encoded) // 2
+        if units > remaining:
+            if not lines:
+                return encoded[:remaining * 2].decode('utf-16-le', errors='ignore')
+            break
+        lines.append(line)
+        remaining -= units + 1  # Include the separator if the next line fits.
+    return '\n'.join(lines)
 
 
 @functools.lru_cache(maxsize=None)

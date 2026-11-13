@@ -4,6 +4,7 @@ from __future__ import annotations
 import threading
 import unittest
 from dataclasses import replace
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import MagicMock, patch
@@ -15,17 +16,19 @@ from usage_monitor.monitor import ProviderMonitor
 from usage_monitor.settings import get_provider_settings
 
 
-def _make_monitor(provider_id: str = 'claude') -> ProviderMonitor:
+def _make_monitor(provider_id: str = 'claude', *, config_dir: Path | None = None) -> ProviderMonitor:
     """Create a provider monitor without starting its tray message pump."""
     provider = MagicMock()
     provider.provider_id = provider_id
     provider.icon_name = f'usage-monitor-{provider_id}'
     provider.display_name = provider_id.title()
     provider.cli_display_name = 'Claude Code' if provider_id == 'claude' else 'Codex'
+    provider.auth_error_glyph = '>!' if provider_id == 'codex' else 'C!'
     provider.auth_error_label = 'Codex Session Expired' if provider_id == 'codex' else None
     provider.auth_error_short = 'Run codex login to sign in again.' if provider_id == 'codex' else None
     provider.project_url = 'https://example.invalid'
-    provider.custom_config = False
+    provider.config_dir = config_dir
+    provider.custom_config = config_dir is not None
     provider.create_cache.return_value = MagicMock()
     settings = replace(get_provider_settings(provider_id), on_double_click_command=[])
     icon = MagicMock()
@@ -33,6 +36,7 @@ def _make_monitor(provider_id: str = 'claude') -> ProviderMonitor:
     def create_icon(*args: object, **kwargs: object) -> MagicMock:
         del args
         icon.menu = kwargs['menu']
+        icon.title = kwargs['title']
         return icon
 
     with patch('usage_monitor.monitor.pystray.Icon', side_effect=create_icon), \
@@ -239,6 +243,39 @@ class TestNotificationRouting(unittest.TestCase):
         with patch('usage_monitor.monitor.show_notification') as show:
             monitor._notify('message', 'Codex')
         show.assert_called_once_with(monitor.icon, 'message', 'Codex', False)
+
+
+class TestTrayTooltip(unittest.TestCase):
+    """The title budget includes the account prefix on each tray path."""
+
+    def test_startup_fits_a_long_config_prefix(self) -> None:
+        face = '\U0001f600'
+        monitor = _make_monitor(config_dir=Path(face * 80))
+        self.assertEqual(monitor.icon.title, '[' + face * 63)
+
+    def test_usage_title_keeps_its_first_quota_and_drops_overflow(self) -> None:
+        prefix = 'x' * 91
+        monitor = _make_monitor(config_dir=Path(prefix))
+        monitor.settings = replace(monitor.settings, tooltip_fields=['five_hour', 'seven_day_sonnet'])
+        monitor._last_response = {
+            'five_hour': {'utilization': 25, 'resets_at': ''},
+            'seven_day_sonnet': {'utilization': 42, 'resets_at': ''},
+        }
+
+        monitor._render_tray()
+
+        self.assertEqual(monitor.icon.title, f'[{prefix}] Claude Usage\n5h: 25%')
+
+    def test_auth_and_error_titles_keep_their_provider_labels(self) -> None:
+        prefix = 'x' * 95
+        monitor = _make_monitor('codex', config_dir=Path(prefix))
+        monitor._last_response = {'error': 'Signed out', 'auth_error': True}
+        monitor._render_tray()
+        self.assertEqual(monitor.icon.title, f'[{prefix}] Codex Session Expired')
+
+        monitor._last_response = {'error': 'x' * 80}
+        monitor._render_tray()
+        self.assertEqual(monitor.icon.title, f"[{prefix}] {T['error_label']}")
 
 
 if __name__ == '__main__':

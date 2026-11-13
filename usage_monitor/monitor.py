@@ -26,7 +26,7 @@ from .formatting import elapsed_pct, field_period, format_credits, format_toolti
 from .i18n import T
 from .popup import UsagePopup
 from .notification_identity import show_notification
-from .tray_icon import create_icon_image, create_status_image, taskbar_uses_light_theme, watch_theme_change
+from .tray_icon import create_icon_image, create_status_image, fit_tooltip, taskbar_uses_light_theme, watch_theme_change
 
 __all__ = ['ProviderMonitor', 'crash_log']
 
@@ -157,7 +157,7 @@ class ProviderMonitor:
                 icon_style=settings.icon_style,
                 zero_state_glyph=getattr(provider, 'zero_state_glyph', 'C'),
             ),
-            title=self._tooltip_prefix + T['loading'],
+            title=fit_tooltip(self._tooltip_prefix + T['loading']),
             menu=pystray.Menu(
                 pystray.MenuItem(T['menu_show'].replace('Claude', provider.display_name), self.on_show_popup, default=True),
                 pystray.Menu.SEPARATOR,
@@ -492,10 +492,11 @@ class ProviderMonitor:
                 icon_style=self.settings.icon_style,
                 zero_state_glyph=getattr(self.provider, 'zero_state_glyph', 'C'),
             )
-        self.icon.title = self._tooltip_prefix + format_tooltip(
+        tooltip = format_tooltip(
             data, self.settings.tooltip_fields, f'{self.provider.display_name} Usage',
             getattr(self.provider, 'auth_error_label', None), getattr(self.provider, 'auth_error_short', None),
         )
+        self.icon.title = fit_tooltip(self._tooltip_prefix + tooltip)
 
     def _on_theme_changed(self) -> None:
         """Re-render the tray icon when the Windows theme changes."""

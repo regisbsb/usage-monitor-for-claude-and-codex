@@ -13,6 +13,7 @@ This is a fresh combined product derived from [Usage Monitor for Claude](https:/
 
 ### Fixed
 
+- Long tray tooltips, including custom Claude configuration names and emoji, are shortened to fit Windows without interrupting updates.
 - Malformed `time_format` and `icon_style` arrays or objects are ignored with a settings warning instead of crashing startup, including in provider sections.
 - Each provider's reset commands receive utilization and reset timestamps for all active quotas, with the existing compatibility values preserved.
 - Codex CLI version and update output is decoded as UTF-8; failed version commands and missing captured output are rejected safely.

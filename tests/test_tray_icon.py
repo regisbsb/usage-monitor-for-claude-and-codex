@@ -22,6 +22,24 @@ def setUpModule():
     unittest.addModuleCleanup(patcher.stop)
 
 
+class TestFitTooltip(unittest.TestCase):
+    """The Windows tooltip fits in 127 UTF-16 units plus its terminator."""
+
+    def test_fitting_text_is_unchanged(self) -> None:
+        for text in ('', 'Claude Usage\n7d: 42%', 'x' * 124 + '\n\U0001f600', 'x' * 127):
+            with self.subTest(length=len(text)):
+                self.assertEqual(tray_icon_mod.fit_tooltip(text), text)
+
+    def test_overflow_drops_the_first_unfittable_line_and_its_suffix(self) -> None:
+        first_two_lines = 'Codex Usage\n5h: 24%'
+        self.assertEqual(tray_icon_mod.fit_tooltip(first_two_lines + '\n' + 'x' * 120 + '\n7d: 42%'), first_two_lines)
+
+    def test_overlong_first_line_keeps_supplementary_characters_intact(self) -> None:
+        face = '\U0001f600'
+        self.assertEqual(tray_icon_mod.fit_tooltip('x' * 126 + face + '\nmore'), 'x' * 126)
+        self.assertEqual(tray_icon_mod.fit_tooltip('x' * 125 + face + 'y'), 'x' * 125 + face)
+
+
 class TestWatchThemeChange(unittest.TestCase):
     """Tests for watch_theme_change() - the registry-based theme watcher."""
 
