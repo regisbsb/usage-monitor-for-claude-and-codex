@@ -28,6 +28,7 @@ from pathlib import Path
 from typing import Any
 
 from .instance_id import effective_config_dir, is_default_config_dir
+from .pacing import WorkSchedule, parse_work_schedule, validate_schedule_fields
 
 __all__ = [
     'ALERT_EXTRA_USAGE_SPENT', 'ALERT_TIME_AWARE', 'ALERT_TIME_AWARE_BELOW',
@@ -192,7 +193,17 @@ def _validate(data: dict, path: Path) -> dict:
     drop: list[str] = []
 
     for key, value in data.items():
-        if key in _NUMERIC_BOUNDS:
+        if key in {'active_schedule', 'active_schedule_fields'}:
+            try:
+                if key == 'active_schedule':
+                    parse_work_schedule(value)
+                else:
+                    data[key] = validate_schedule_fields(value)
+            except ValueError as error:
+                errors.append(f'  {key}: {error}')
+                drop.append(key)
+
+        elif key in _NUMERIC_BOUNDS:
             min_val = _NUMERIC_BOUNDS[key]
             if isinstance(value, bool) or not isinstance(value, int):
                 errors.append(f'  {key}: expected an integer, got {type(value).__name__}')
@@ -607,6 +618,7 @@ class ProviderSettings:
     auto_update_cli: bool
     update_interval: int
     values: dict[str, Any]
+    work_schedule: WorkSchedule | None = None
 
     def alert_thresholds(self, variant_key: str) -> list[float]:
         """Return provider-specific thresholds with the shared fallback chain."""
@@ -633,6 +645,8 @@ def get_provider_settings(provider_id: str) -> ProviderSettings:
 
     section = _PROVIDER_SECTIONS.get(provider_id, {})
     values = {**_S, **section} if isinstance(section, dict) else dict(_S)
+    schedule = values.get('active_schedule')
+    fields = values.get('active_schedule_fields')
     return ProviderSettings(
         provider_id=provider_id,
         enabled=values.get('enabled', True),
@@ -663,4 +677,5 @@ def get_provider_settings(provider_id: str) -> ProviderSettings:
         auto_update_cli=provider_id == 'codex' and values.get('auto_update_codex_cli', True),
         update_interval=values.get('codex_update_interval', 86400),
         values=values,
+        work_schedule=parse_work_schedule(schedule, None if fields is None else tuple(fields)) if schedule is not None else None,
     )

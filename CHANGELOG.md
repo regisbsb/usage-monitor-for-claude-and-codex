@@ -9,6 +9,7 @@ This is a fresh combined product derived from [Usage Monitor for Claude](https:/
 ### Added
 
 - Each provider's [`popup_fields`](docs/configuration.md#popup-field-exclusions) now accepts exact exclusions such as `["*", "-iguana_necktie"]` to hide specific popup bars while keeping the other active quotas visible.
+- Optional [work-hour pacing](docs/configuration.md#work-hour-pacing) pauses long-quota markers outside the configured hours and uses the same pace for tray overage and time-aware alerts.
 
 ### Fixed
 

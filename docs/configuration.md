@@ -98,6 +98,25 @@ Shared settings do not merge provider account state. They only give the two prov
 
 `weekly_bar_parts` changes only the visual pacing guides. The provider's quota remains a seven-day window, and the elapsed-time marker still follows the real reset period. The default of `5` supports a five-day workweek; set it to `7` for seven equal calendar-day budgets.
 
+### Work-hour pacing
+
+Set `active_schedule` to pace quotas of a day or longer by working time. Set it at the application level for both providers, or under `providers.claude` or `providers.codex` to replace the schedule for that provider. An empty object disables an inherited schedule.
+
+```json
+{
+  "providers": {
+    "claude": {
+      "active_schedule": {"mon": [9, 17], "tue": [[9, 12], [13, 17]], "wed": [22, 6]},
+      "active_schedule_fields": ["seven_day", "seven_day_*"]
+    }
+  }
+}
+```
+
+Hours use the computer's local time and can be fractional. An end before the start crosses midnight. Omitted days are inactive. Omit `active_schedule_fields` to pace all eligible quotas; use an empty list to pace none. A `*` matches any part of a quota name.
+
+The popup and tray markers, warning colors, and time-aware alerts follow the same working-time scale. Popup dividers mark workday starts. Short or unmatched quotas and windows with no working time keep wall-clock pacing and the existing guides. The schedule does not change when quotas reset or when either provider polls.
+
 ## Provider polling
 
 Each provider accepts its own polling values:

@@ -10,13 +10,14 @@ from __future__ import annotations
 import locale as _locale
 import re
 from datetime import datetime, timedelta, timezone
-from typing import Any
+from typing import Any, Callable
 
 from .i18n import T
+from .pacing import WorkSchedule
 from .settings import CURRENCY_SYMBOL, TIME_FORMAT, TOOLTIP_FIELDS, WEEKLY_BAR_PARTS, _SYSTEM_CURRENCY_SYMBOL
 
 __all__ = [
-    'divider_positions', 'elapsed_pct', 'expand_popup_fields', 'field_period', 'format_credits',
+    'divider_positions', 'elapsed_fraction', 'elapsed_pct', 'expand_popup_fields', 'field_period', 'format_credits',
     'format_tooltip', 'is_active_quota', 'parse_field_name', 'popup_label', 'resolve_display_fields', 'time_until', 'tooltip_label',
 ]
 
@@ -248,7 +249,36 @@ def resolve_display_fields(configured: list[str], data: dict[str, Any], count: i
     return slots
 
 
-def elapsed_pct(resets_at: str, period_seconds: int) -> float | None:
+def elapsed_fraction(
+    resets_at: str, period_seconds: int, *, field: str | None = None, work_schedule: WorkSchedule | None = None,
+) -> Callable[[datetime], float] | None:
+    """Build a clamped elapsed-fraction function on the wall-clock or work schedule scale.
+
+    The function accepts aware datetimes. Return None for invalid or naive
+    reset timestamps, and use wall-clock time when no working slots apply.
+    """
+    if not resets_at or period_seconds <= 0:
+        return None
+    try:
+        reset = datetime.fromisoformat(resets_at)
+        if reset.utcoffset() is None:
+            return None
+        window = work_schedule.window(reset, period_seconds, field) if work_schedule is not None else None
+    except (TypeError, ValueError, OSError, OverflowError):
+        return None
+    if window is not None:
+        return window.fraction
+
+    def wall_fraction(when: datetime) -> float:
+        remaining = (reset - when).total_seconds()
+        return max(0.0, min(1.0, (period_seconds - remaining) / period_seconds))
+
+    return wall_fraction
+
+
+def elapsed_pct(
+    resets_at: str, period_seconds: int, *, field: str | None = None, work_schedule: WorkSchedule | None = None,
+) -> float | None:
     """Return elapsed percentage of a usage period, or None if not calculable.
 
     Parameters
@@ -257,6 +287,10 @@ def elapsed_pct(resets_at: str, period_seconds: int) -> float | None:
         ISO 8601 timestamp when the limit resets.
     period_seconds : int
         Total duration of the period in seconds (e.g. 18000 for 5h).
+    field : str or None
+        Normalized quota field used to select scheduled pacing.
+    work_schedule : WorkSchedule or None
+        Optional schedule from the owning provider's settings.
 
     Returns
     -------
@@ -264,21 +298,14 @@ def elapsed_pct(resets_at: str, period_seconds: int) -> float | None:
         Percentage of the period that has already elapsed (0-100),
         or None if the value cannot be determined.
     """
-    if not resets_at or period_seconds <= 0:
-        return None
-
-    try:
-        reset = datetime.fromisoformat(resets_at)
-        now = datetime.now(timezone.utc)
-        remaining = (reset - now).total_seconds()
-        elapsed = period_seconds - remaining
-
-        return max(0.0, min(100.0, elapsed / period_seconds * 100))
-    except Exception:
-        return None
+    fraction = elapsed_fraction(resets_at, period_seconds, field=field, work_schedule=work_schedule)
+    return None if fraction is None else 100 * fraction(datetime.now(timezone.utc))
 
 
-def divider_positions(resets_at: str, period_seconds: int, weekly_parts: int | None = None) -> list[float]:
+def divider_positions(
+    resets_at: str, period_seconds: int, weekly_parts: int | None = None, *,
+    field: str | None = None, work_schedule: WorkSchedule | None = None,
+) -> list[float]:
     """Return relative positions (0.0-1.0) of divider marks within a usage period.
 
     Five-hour periods are split into five equal hour sections, independent
@@ -297,6 +324,10 @@ def divider_positions(resets_at: str, period_seconds: int, weekly_parts: int | N
     weekly_parts : int or None
         Number of equal sections for a seven-day period. ``None`` uses the
         shared ``weekly_bar_parts`` setting.
+    field : str or None
+        Normalized quota field used to select scheduled pacing.
+    work_schedule : WorkSchedule or None
+        If applicable, place dividers at workday starts on the working-time scale.
 
     Returns
     -------
@@ -315,6 +346,11 @@ def divider_positions(resets_at: str, period_seconds: int, weekly_parts: int | N
             if period_seconds != PERIOD_5H:
                 return []
             return [i / 5 for i in range(1, 5)]
+
+        if work_schedule is not None and reset_utc.utcoffset() is not None:
+            window = work_schedule.window(reset_utc, period_seconds, field)
+            if window is not None:
+                return window.dividers()
 
         if period_seconds == PERIOD_7D:
             parts = WEEKLY_BAR_PARTS if weekly_parts is None else weekly_parts

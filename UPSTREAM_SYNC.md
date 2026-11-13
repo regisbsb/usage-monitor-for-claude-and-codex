@@ -152,6 +152,7 @@ The initial combined repository is a fresh integration rather than a merge commi
 | 2026-10-24 | Claude | `14fdd6f14ef49a4686b6c820a8fb46e2f40c10ff` ([PR #113](https://github.com/jens-duttke/usage-monitor-for-claude/pull/113)) | Manual shared port | Exact popup-field exclusions translated to shared formatting, nested provider settings, tests, and docs; default remains `['*']` for both providers |
 | 2026-10-24 | Codex | `3c8934b910af73b1b74ed7bb0545b92f22f99ebf` | Manual Codex/shared port | Explicit UTF-8 CLI capture with replacement, failed-version and missing-stream rejection, and complete reset-command quota snapshots via the existing active-quota helper; fixed native update commands and provider isolation retained |
 | 2026-10-24 | Codex | `f5d982a49457899716a95e07db63c79d69dc2b77` | Manual shared port | Reject malformed enum types before set membership across all settings sections; preserve legacy utilization/reset defaults alongside generic reset snapshots |
+| 2026-11-13 | Claude | `302eb47ff62eb19e34675a771af56f3aede8fdc0` | Manual shared port | Opt-in work-hour pacing with provider overrides; shared elapsed-time scale for popup, tray, and alerts; current weekly guides retained when no schedule applies |
 
 ## Verification for the 2026-10-24 import
 

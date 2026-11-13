@@ -23,6 +23,7 @@ from . import __version__
 from .claude_cli import CHANGELOG_URL, find_installations
 from .formatting import divider_positions, elapsed_pct, expand_popup_fields, field_period, format_credits, popup_label, time_until
 from .i18n import T
+from .pacing import WorkSchedule
 from .settings import BAR_BG, BAR_DIVIDER, BAR_FG, BAR_FG_WARN, BAR_MARKER, BG, COMPACT_HIDE, FG, FG_DIM, FG_HEADING, FG_LINK, POPUP_FIELDS
 
 _POPUP_DIR = Path(__file__).parent / 'popup'
@@ -92,7 +93,7 @@ def _usage_entries(
 
 def _snapshot_to_dict(
     snap: CacheSnapshot, installations: list[dict[str, str]] | None = None, next_poll_time: float | None = None,
-    popup_fields: list[str] | None = None,
+    popup_fields: list[str] | None = None, *, work_schedule: WorkSchedule | None = None,
 ) -> dict[str, Any]:
     """Convert a CacheSnapshot to a JSON-serializable dict for the popup JS.
 
@@ -124,7 +125,7 @@ def _snapshot_to_dict(
                 continue
             pct = entry.get('utilization', 0) or 0
             resets_at = entry.get('resets_at', '')
-            time_pct = elapsed_pct(resets_at, period) if period else None
+            time_pct = elapsed_pct(resets_at, period, field=field, work_schedule=work_schedule) if period else None
             warn = pct >= 100 or (time_pct is not None and pct > time_pct)
             marker_rel = max(0.0, min(1.0, time_pct / 100)) if time_pct is not None else None
 
@@ -135,7 +136,7 @@ def _snapshot_to_dict(
                 'fill_pct': max(0.0, min(1.0, pct / 100)),
                 'warn': warn,
                 'reset_text': time_until(resets_at) if resets_at else '',
-                'dividers': divider_positions(resets_at, period) if period else [],
+                'dividers': divider_positions(resets_at, period, field=field, work_schedule=work_schedule) if period else [],
                 'marker_rel': marker_rel,
             })
 
@@ -203,7 +204,7 @@ def _init_config(
     snap: CacheSnapshot, next_poll_time: float | None = None, *,
     title: str | None = None, compact_hide: list[str] | None = None,
     popup_fields: list[str] | None = None, installations: list[dict[str, str]] | None = None,
-    cli_label: str | None = None,
+    cli_label: str | None = None, work_schedule: WorkSchedule | None = None,
 ) -> dict[str, Any]:
     """Build the config object passed to JS ``init()`` after the page loads."""
     return {
@@ -224,7 +225,7 @@ def _init_config(
         'app_version': __version__,
         'compact_hide': COMPACT_HIDE if compact_hide is None else compact_hide,
         'data': _snapshot_to_dict(
-            snap, installations=installations, next_poll_time=next_poll_time, popup_fields=popup_fields,
+            snap, installations=installations, next_poll_time=next_poll_time, popup_fields=popup_fields, work_schedule=work_schedule,
         ),
     }
 
@@ -379,6 +380,7 @@ class UsagePopup:
             installations=installations,
             next_poll_time=next_poll_time,
             popup_fields=settings.popup_fields if settings is not None else None,
+            work_schedule=settings.work_schedule if settings is not None else None,
         )
 
     def _on_loaded(self) -> None:
@@ -393,6 +395,7 @@ class UsagePopup:
             popup_fields=settings.popup_fields if settings is not None else None,
             installations=self._find_installations(),
             cli_label=f'{provider.display_name} CLI' if provider is not None else None,
+            work_schedule=settings.work_schedule if settings is not None else None,
         )
         self._window.evaluate_js(f'init({json.dumps(config)})')
 
