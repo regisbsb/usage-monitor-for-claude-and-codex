@@ -10,8 +10,9 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
+from usage_monitor.popup import _snapshot_to_dict
 from usage_monitor.providers.claude import ClaudeProvider
-from usage_monitor.providers.claude.api import API_URL_USAGE
+from usage_monitor.providers.claude.api import API_URL_PROFILE, API_URL_USAGE
 from usage_monitor.providers.claude.cache import UsageCache
 from usage_monitor.providers.claude.claude_cli import RefreshResult, _run_cli
 
@@ -84,6 +85,63 @@ class ClaudeApiBoundaryTests(unittest.TestCase):
             timeout=10,
             allow_redirects=False,
         )
+
+    def test_claude_plan_name_and_details_reach_popup_from_existing_profile_request(self) -> None:
+        provider = ClaudeProvider(Path('unused'), {})
+        raw_profile = {
+            'account': {'uuid': 'synthetic-account', 'email': 'test@example.test'},
+            'organization': {
+                'plan_display_name': '  Ultra ', 'organization_type': 'claude_max', 'rate_limit_tier': 'default_claude_max_20x',
+            },
+        }
+        response = MagicMock(status_code=200)
+        response.json.return_value = raw_profile
+        with patch.object(provider._api, 'read_access_token', return_value='synthetic-token'), \
+             patch.object(provider._cli, 'native_version', return_value='1.0.0'), \
+             patch('usage_monitor.providers.claude.api.requests.get', return_value=response) as get:
+            cache = provider.create_cache()
+            cache.ensure_profile()
+            rendered = _snapshot_to_dict(cache.snapshot, installations=[])['profile']
+
+        self.assertEqual(rendered, {
+            'email': 'test@example.test',
+            'plan': 'Ultra',
+            'plan_details': 'Organization Type: Claude Max\nRate Limit Tier: Default Claude Max 20x',
+        })
+        self.assertEqual(cache.profile['account']['uuid'], 'synthetic-account')
+        self.assertNotIn('plan_label', raw_profile)
+        get.assert_called_once_with(
+            API_URL_PROFILE, headers={
+                'Authorization': 'Bearer synthetic-token',
+                'Content-Type': 'application/json',
+                'User-Agent': 'claude-code/1.0.0',
+                'anthropic-beta': 'oauth-2025-04-20',
+            }, timeout=10, allow_redirects=False,
+        )
+
+    def test_claude_plan_fallback_tolerates_malformed_fields(self) -> None:
+        provider = ClaudeProvider(Path('unused'), {})
+        cases = (
+            ({'organization_type': 'pro_team'}, 'Pro Team'),
+            ({'plan_display_name': ' \t', 'organization_type': 'pro_team'}, 'Pro Team'),
+            ({'plan_display_name': ['Ultra'], 'organization_type': 'max_20x'}, 'Max 20x'),
+            ({'plan_display_name': None, 'organization_type': 5, 'rate_limit_tier': {}}, ''),
+            (['not-an-object'], ''),
+        )
+        with patch.object(provider._cli, 'native_version', return_value='1.0.0'), patch.object(provider._api, '_get') as get:
+            for organization, expected in cases:
+                with self.subTest(organization=organization):
+                    get.return_value.json.return_value = {'organization': organization}
+                    profile = provider._api.fetch_profile('synthetic-token')
+                    self.assertEqual(profile['plan_label'], expected)
+
+    def test_profile_fetch_keeps_signed_out_distinct_from_unavailable(self) -> None:
+        provider = ClaudeProvider(Path('unused'), {})
+        with patch.object(provider._cli, 'native_version', return_value='1.0.0'), patch.object(provider._api, '_get') as get:
+            for payload, expected in (({}, {}), (None, None), ([], None)):
+                with self.subTest(payload=payload):
+                    get.return_value.json.return_value = payload
+                    self.assertEqual(provider._api.fetch_profile('synthetic-token'), expected)
 
 
 class _FakeApi:

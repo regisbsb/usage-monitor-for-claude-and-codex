@@ -190,6 +190,11 @@ class TestSnapshotToDict(unittest.TestCase):
         self.assertEqual(result['profile']['email'], 'test@example.com')
         self.assertEqual(result['profile']['plan'], 'Pro Team')
 
+    def test_codex_plan_does_not_require_claude_display_metadata(self) -> None:
+        profile = {'account': {'email': 'test@example.test'}, 'organization': {'organization_type': 'plus'}}
+        result = _snapshot_to_dict(_snap(profile=profile), installations=[])
+        self.assertEqual(result['profile'], {'email': 'test@example.test', 'plan': 'Plus'})
+
     def test_empty_profile_hidden(self):
         """Empty profile dict from API is treated as absent (no broken UI)."""
         result = _snapshot_to_dict(_snap(profile={}), installations=[])

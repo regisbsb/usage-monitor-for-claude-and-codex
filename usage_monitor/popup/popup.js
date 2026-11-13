@@ -195,6 +195,7 @@ function updateData(data) {
     const hasProfile = !!data.profile;
     const accountVisible = hasProfile && !compactHidden('account');
     els.accountSection.classList.toggle('visible', accountVisible);
+    els.planValue.title = data.profile?.plan_details || '';
     if (hasProfile) {
         els.emailValue.textContent = data.profile.email;
         els.emailRow.style.display = data.profile.email ? '' : 'none';

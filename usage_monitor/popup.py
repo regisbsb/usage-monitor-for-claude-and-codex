@@ -115,12 +115,19 @@ def _snapshot_to_dict(
     # returns an empty or incomplete response, instead of rendering empty Email/Plan fields.
     profile = None
     if snap.profile:
-        account = snap.profile.get('account') or {}
-        org = snap.profile.get('organization') or {}
+        account = snap.profile.get('account')
+        org = snap.profile.get('organization')
+        plan = snap.profile.get('plan_label')
+        if not isinstance(plan, str):
+            organization_type = org.get('organization_type') if isinstance(org, dict) else None
+            plan = organization_type.replace('_', ' ').title() if isinstance(organization_type, str) else ''
         profile = {
-            'email': account.get('email', ''),
-            'plan': org.get('organization_type', '').replace('_', ' ').title(),
+            'email': account.get('email', '') if isinstance(account, dict) else '',
+            'plan': plan,
         }
+        details = snap.profile.get('plan_details')
+        if plan and isinstance(details, str) and details:
+            profile['plan_details'] = details
 
     # Usage bars
     usage = []

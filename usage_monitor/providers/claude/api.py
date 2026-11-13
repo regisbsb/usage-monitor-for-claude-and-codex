@@ -123,7 +123,7 @@ class ClaudeAPI:
         if headers is None:
             return None
         try:
-            return self._get(API_URL_PROFILE, headers).json()
+            return _normalize_profile(self._get(API_URL_PROFILE, headers).json())
         except Exception:
             return None
 
@@ -141,6 +141,40 @@ class ClaudeAPI:
             raise requests.HTTPError(response=response)
         response.raise_for_status()
         return response
+
+
+def _normalize_profile(profile: Any) -> dict[str, Any] | None:
+    """Add display-ready plan metadata without changing account identity."""
+    if not isinstance(profile, dict):
+        return None
+    if not profile:
+        return profile
+    organization = profile.get('organization')
+    if not isinstance(organization, dict):
+        organization = {}
+
+    display_name = organization.get('plan_display_name')
+    plan = display_name.strip() if isinstance(display_name, str) else ''
+    organization_type = _readable_identifier(organization.get('organization_type'))
+    rate_limit_tier = _readable_identifier(organization.get('rate_limit_tier'))
+    details = []
+    if organization_type:
+        details.append(f'Organization Type: {organization_type}')
+    if rate_limit_tier:
+        details.append(f'Rate Limit Tier: {rate_limit_tier}')
+    return {
+        **profile,
+        'plan_label': plan or organization_type,
+        'plan_details': '\n'.join(details),
+    }
+
+
+def _readable_identifier(value: Any) -> str:
+    """Format a snake_case identifier without changing suffixes such as 20x."""
+    if not isinstance(value, str):
+        return ''
+    words = value.strip().split('_')
+    return ' '.join(word[:1].upper() + word[1:] for word in words if word)
 
 
 def merge_scoped_limits(data: dict[str, Any]) -> dict[str, Any]:

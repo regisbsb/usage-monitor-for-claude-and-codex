@@ -197,6 +197,32 @@ console.log(JSON.stringify({
 
 
 @unittest.skipUnless(_NODE, 'Node.js not available')
+class TestAccountPlan(unittest.TestCase):
+    """Tests for the optional plan details on the account row."""
+
+    def test_plan_tooltip_is_plain_text_and_clears_without_details(self):
+        result = _run_scenario('''
+for (const name of ['accountSection', 'emailRow', 'emailValue', 'planRow', 'planValue',
+    'usageSection', 'extraSection', 'installSection', 'headingUsage', 'statusSection']) {
+    els[name] = document.createElement('div');
+}
+const details = 'Organization Type: Claude Max\\nRate Limit Tier: Default Claude Max 20x';
+updateData({ profile: { email: '', plan: 'Ultra', plan_details: details } });
+const claude = { plan: els.planValue.textContent, title: els.planValue.title };
+updateData({ profile: null });
+const signedOut = { visible: els.accountSection.classList.contains('visible'), title: els.planValue.title };
+updateData({ profile: { email: '', plan: 'Plus' } });
+const codex = { plan: els.planValue.textContent, title: els.planValue.title };
+console.log(JSON.stringify({ claude, signedOut, codex }));
+''')
+        self.assertEqual(result, {
+            'claude': {'plan': 'Ultra', 'title': 'Organization Type: Claude Max\nRate Limit Tier: Default Claude Max 20x'},
+            'signedOut': {'visible': False, 'title': ''},
+            'codex': {'plan': 'Plus', 'title': ''},
+        })
+
+
+@unittest.skipUnless(_NODE, 'Node.js not available')
 class TestManualRefresh(unittest.TestCase):
     """Tests for the popup refresh button's async request state."""
 
