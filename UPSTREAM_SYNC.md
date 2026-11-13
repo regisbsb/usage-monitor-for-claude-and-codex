@@ -7,7 +7,7 @@ This repository combines two independently maintained source lines. Import chang
 | Source | Repository | Baseline head | Last reviewed SHA | Review status |
 |---|---|---|---|---|
 | Claude | https://github.com/jens-duttke/usage-monitor-for-claude | `3e2cfc3b2eb15e1f8b9b08e2b0d470750f84bad1` | `e73239c4929ace99f6f80d4bfab31484b229bc34` | Reviewed through standalone v1.27.0; five selected changes manually adapted |
-| Codex | https://github.com/ihor-sokoliuk/usage-monitor-for-codex | `cbd5996b38fa8bbf62a98034bc60e926bc3bed96` | `6deb0294bacbf2c02bd319cdcdb2dfdeaafa077d` | Selectively reviewed through 2026-10-23 upstream changes; three fixes imported and deferred work recorded below |
+| Codex | https://github.com/ihor-sokoliuk/usage-monitor-for-codex | `cbd5996b38fa8bbf62a98034bc60e926bc3bed96` | `6deb0294bacbf2c02bd319cdcdb2dfdeaafa077d` | Upstream `main` unchanged at the 2026-11-13 fetch; three fixes previously imported and deferred work recorded below |
 
 Common ancestor: `f9224c2667ce7210464590d1e5e3f5d8637c8c69`.
 
@@ -71,6 +71,7 @@ Review each source independently:
 | 2026-10-24 | Claude | `5f27127..5cbccc5` (4 commits) | Reviewed the complete range; popup exclusions match the existing targeted port, prepaid-only optimization and standalone release/credit documentation skipped |
 | 2026-10-24 | Codex | `cbd5996..6deb029` (95 commits: 90 inherited Claude commits and 5 Codex commits) | Reviewed the complete range against both existing provider implementations; manually ported enum validation, complete reset snapshots, and Codex CLI capture hardening; remaining changes classified below |
 | 2026-11-13 | Claude | `5cbccc5..e73239c` (11 commits) | Five changes manually adapted; weekly quota fallback already present, standalone process/release changes skipped, and MCP deferred |
+| 2026-11-13 | Codex | `6deb029..6deb029` (0 commits) | Fetched upstream `main`; no new commits, review cursor unchanged |
 
 ### Claude commits reviewed on 2026-11-13
 
